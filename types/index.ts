@@ -76,7 +76,7 @@ export interface NotionPageProperties {
     select: { name: string } | null;
   };
   Status_Dispo: {
-    status: { name: string } | null;
+    select: { name: string } | null;
   };
   Reserve_Par: {
     rich_text: Array<{ plain_text: string }>;

@@ -171,7 +171,7 @@ export function parseNotionItem(page: NotionPage): HeritageItem {
     valeur_estimee: props.Valeur_Estimee.number ?? null,
     status_vente: (props.Status_Vente.select?.name as SaleStatus) ?? 'A donner',
     status_dispo:
-      (props.Status_Dispo.status?.name as AvailabilityStatus) ?? 'Disponible',
+      (props.Status_Dispo.select?.name as AvailabilityStatus) ?? 'Disponible',
     reserve_par: props.Reserve_Par.rich_text[0]?.plain_text ?? null,
     options_par: parseOptionsQueue(props.Options_Par.rich_text[0]?.plain_text),
     tags: props.Tags.multi_select.map((t) => t.name),
@@ -391,7 +391,7 @@ export async function getAssociationItems(): Promise<HeritageItem[]> {
           filter: {
             and: [
               { property: 'Status_Vente', select: { equals: 'A donner' } },
-              { property: 'Status_Dispo', status: { equals: 'Disponible' } },
+              { property: 'Status_Dispo', select: { equals: 'Disponible' } },
             ],
           },
           sorts: [{ property: 'Date_Ajout', direction: 'descending' }],
@@ -438,7 +438,7 @@ export async function reserveItem(
         notion.pages.update({
           page_id: itemId,
           properties: {
-            Status_Dispo: { status: { name: 'Réservé' } },
+            Status_Dispo: { select: { name: 'Réservé' } },
             Reserve_Par: { rich_text: [{ text: { content: userName } }] },
             Options_Par: {
               rich_text: [{ text: { content: serializeOptionsQueue(newOptions) } }],
@@ -455,7 +455,7 @@ export async function reserveItem(
         notion.pages.update({
           page_id: itemId,
           properties: {
-            Status_Dispo: { status: { name: 'Réservé' } },
+            Status_Dispo: { select: { name: 'Réservé' } },
             Reserve_Par: { rich_text: [{ text: { content: userName } }] },
           },
         })
@@ -498,7 +498,7 @@ export async function cancelReservation(itemId: string): Promise<CancelResult> {
         notion.pages.update({
           page_id: itemId,
           properties: {
-            Status_Dispo: { status: { name: 'Disponible' } },
+            Status_Dispo: { select: { name: 'Disponible' } },
             Reserve_Par: { rich_text: [] },
           },
         })
@@ -595,7 +595,7 @@ export async function markAsGiven(itemId: string): Promise<HeritageItem> {
       notion.pages.update({
         page_id: itemId,
         properties: {
-          Status_Dispo: { status: { name: 'Donné' } },
+          Status_Dispo: { select: { name: 'Donné' } },
         },
       })
     );
@@ -653,7 +653,7 @@ function buildFilter(filters?: ItemFilters): NotionFilter {
   if (filters.status) {
     conditions.push({
       property: 'Status_Dispo',
-      status: { equals: filters.status },
+      select: { equals: filters.status },
     });
   }
 
