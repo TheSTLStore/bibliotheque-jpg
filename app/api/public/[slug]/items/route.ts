@@ -1,0 +1,47 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { validateAssociationSlug, InvalidSlugError } from '@/lib/auth';
+import { getAssociationItems } from '@/lib/notion';
+
+interface RouteParams {
+  params: {
+    slug: string;
+  };
+}
+
+/**
+ * GET /api/public/[slug]/items
+ * List available items for association
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: RouteParams
+) {
+  try {
+    const { slug } = params;
+
+    // Validate slug
+    try {
+      validateAssociationSlug(slug);
+    } catch (error) {
+      if (error instanceof InvalidSlugError) {
+        return NextResponse.json(
+          { error: 'Association invalide' },
+          { status: 404 }
+        );
+      }
+      throw error;
+    }
+
+    // Get items for association (only available items)
+    const items = await getAssociationItems();
+
+    return NextResponse.json({ items }, { status: 200 });
+  } catch (error) {
+    console.error('Association items error:', error);
+
+    return NextResponse.json(
+      { error: 'Une erreur est survenue lors de la récupération des items' },
+      { status: 500 }
+    );
+  }
+}
