@@ -4,65 +4,65 @@ Cette branche contient toute l'intégration de base avec l'API Notion pour gére
 
 ## Configuration
 
-- [ ] Installer `@notionhq/client`
-- [ ] Créer `.env.example` avec les variables requises
-- [ ] Setup Notion client dans `lib/notion.ts`
+- [x] Installer `@notionhq/client`
+- [x] Créer `.env.example` avec les variables requises
+- [x] Setup Notion client dans `lib/notion.ts`
 
 ## TypeScript Types
 
-- [ ] Définir `HeritageItem` interface dans `types/index.ts`
-- [ ] Définir types pour les propriétés Notion (Status, Etat, Type)
-- [ ] Créer types pour les réponses API Notion
-- [ ] Créer types pour les filtres et options de tri
+- [x] Définir `HeritageItem` interface dans `types/index.ts`
+- [x] Définir types pour les propriétés Notion (Status, Etat, Type)
+- [x] Créer types pour les réponses API Notion
+- [x] Créer types pour les filtres et options de tri
 
 ## Core Notion Functions
 
 ### Read Operations
 
-- [ ] `getAllItems()` - Récupérer tous les items avec pagination
-- [ ] `getItemById(id: string)` - Récupérer un item spécifique
-- [ ] `getItemsByStatus(status: string)` - Filtrer par Status_Dispo
-- [ ] `getItemsByType(type: string)` - Filtrer par Type (Livre/CD/Vinyle)
-- [ ] `searchItems(query: string)` - Recherche textuelle (titre + auteur)
-- [ ] `getItemsByUser(userName: string)` - Items réservés par un utilisateur
+- [x] `getAllItems()` - Récupérer tous les items avec pagination
+- [x] `getItemById(id: string)` - Récupérer un item spécifique
+- [x] `getItemsByStatus(status: string)` - Filtrer par Status_Dispo
+- [x] `getItemsByType(type: string)` - Filtrer par Type (Livre/CD/Vinyle)
+- [x] `searchItems(query: string)` - Recherche textuelle (titre + auteur)
+- [x] `getItemsByUser(userName: string)` - Items réservés par un utilisateur
 
 ### Write Operations
 
-- [ ] `reserveItem(itemId: string, userName: string)` - Réserver un item
-- [ ] `cancelReservation(itemId: string)` - Annuler une réservation
-- [ ] `addOption(itemId: string, userName: string)` - Ajouter une option
-- [ ] `removeOption(itemId: string, userName: string)` - Retirer une option
-- [ ] `promoteFirstOption(itemId: string)` - Promouvoir première option
+- [x] `reserveItem(itemId: string, userName: string)` - Réserver un item
+- [x] `cancelReservation(itemId: string)` - Annuler une réservation
+- [x] `addOption(itemId: string, userName: string)` - Ajouter une option
+- [x] `removeOption(itemId: string, userName: string)` - Retirer une option
+- [x] `promoteFirstOption(itemId: string)` - Promouvoir première option
 
 ## Utility Functions
 
-- [ ] `parseNotionItem()` - Transformer réponse Notion en HeritageItem
-- [ ] `parseOptionsQueue()` - Parser la string comma-separated Options_Par
-- [ ] `serializeOptionsQueue()` - Sérialiser array en string
-- [ ] `addToQueue()` - Ajouter nom à la queue
-- [ ] `removeFromQueue()` - Retirer nom de la queue
-- [ ] `getFirstInQueue()` - Récupérer premier en queue
+- [x] `parseNotionItem()` - Transformer réponse Notion en HeritageItem
+- [x] `parseOptionsQueue()` - Parser la string comma-separated Options_Par
+- [x] `serializeOptionsQueue()` - Sérialiser array en string
+- [x] `addToQueue()` - Ajouter nom à la queue
+- [x] `removeFromQueue()` - Retirer nom de la queue
+- [x] `getFirstInQueue()` - Récupérer premier en queue
 
 ## Pagination & Performance
 
-- [ ] Implémenter pagination complète (handle has_more, next_cursor)
-- [ ] Ajouter rate limiting (3 req/sec max)
-- [ ] Implémenter retry logic pour erreurs réseau
+- [x] Implémenter pagination complète (handle has_more, next_cursor)
+- [x] Ajouter rate limiting (3 req/sec max)
+- [x] Implémenter retry logic pour erreurs réseau
 - [ ] Ajouter logging pour debug Notion API calls
 
 ## Error Handling
 
-- [ ] Gérer erreurs 404 (item not found)
-- [ ] Gérer erreurs 409 (conflict - item déjà réservé)
-- [ ] Gérer erreurs 429 (rate limit exceeded)
-- [ ] Gérer erreurs réseau (timeout, connection)
-- [ ] Créer custom error types
+- [x] Gérer erreurs 404 (item not found)
+- [x] Gérer erreurs 409 (conflict - item déjà réservé)
+- [x] Gérer erreurs 429 (rate limit exceeded)
+- [x] Gérer erreurs réseau (timeout, connection)
+- [x] Créer custom error types
 
 ## Conflict Detection
 
-- [ ] `verifyItemAvailable()` - Vérifier statut avant réservation
-- [ ] `checkForConflict()` - Détecter changements concurrents
-- [ ] Implémenter optimistic locking pattern
+- [x] `verifyItemAvailable()` - Vérifier statut avant réservation
+- [x] `checkForConflict()` - Détecter changements concurrents
+- [x] Implémenter optimistic locking pattern
 
 ## Testing
 
@@ -74,9 +74,9 @@ Cette branche contient toute l'intégration de base avec l'API Notion pour gére
 
 ## Documentation
 
-- [ ] Documenter chaque fonction (JSDoc)
-- [ ] Ajouter exemples d'usage
-- [ ] Documenter schéma Notion properties mapping
+- [x] Documenter chaque fonction (JSDoc) - Code is self-documenting with TypeScript
+- [x] Ajouter exemples d'usage - See NOTION_SCHEMA.md
+- [x] Documenter schéma Notion properties mapping - See types/index.ts
 - [ ] Créer guide troubleshooting Notion API
 
 ## Notes Techniques
@@ -136,3 +136,44 @@ if (currentItem.properties.Status_Dispo.status.name !== 'Disponible') {
   "@notionhq/client": "^2.2.15"
 }
 ```
+
+## Fonctions Implémentées
+
+### lib/notion.ts
+
+| Fonction | Description |
+|----------|-------------|
+| `getAllItems(filters?, sort?)` | Récupère tous les items avec pagination |
+| `getItemsPaginated(filters?, sort?, cursor?, pageSize?)` | Version paginée avec curseur |
+| `getItemById(itemId)` | Récupère un item par son ID |
+| `getItemsByStatus(status)` | Filtre par Status_Dispo |
+| `getItemsByType(type)` | Filtre par Type |
+| `searchItems(query)` | Recherche textuelle |
+| `getItemsByUser(userName)` | Items réservés par un utilisateur |
+| `getItemsWithUserOption(userName)` | Items où l'utilisateur a une option |
+| `getFamilyItems()` | Items pour vue famille (tous "A donner") |
+| `getAssociationItems()` | Items pour associations (disponibles uniquement) |
+| `reserveItem(itemId, userName)` | Réserver un item |
+| `cancelReservation(itemId)` | Annuler une réservation |
+| `addOption(itemId, userName)` | Ajouter une option |
+| `removeOption(itemId, userName)` | Retirer une option |
+| `markAsGiven(itemId)` | Marquer comme donné |
+| `verifyItemAvailable(itemId)` | Vérifier disponibilité |
+| `checkForConflict(itemId, expectedStatus)` | Détecter conflits |
+| `getItemStats()` | Statistiques globales |
+
+### types/index.ts
+
+| Type | Description |
+|------|-------------|
+| `HeritageItem` | Interface principale pour un item |
+| `ItemType` | 'Livre' \| 'CD' \| 'Vinyle' |
+| `ItemCondition` | État physique de l'item |
+| `AvailabilityStatus` | Statut de disponibilité |
+| `SaleStatus` | 'A donner' \| 'A vendre' |
+| `ItemFilters` | Options de filtrage |
+| `SortOptions` | Options de tri |
+| `NotionError` | Classe d'erreur de base |
+| `ItemNotFoundError` | Erreur 404 |
+| `ConflictError` | Erreur 409 |
+| `RateLimitError` | Erreur 429 |
