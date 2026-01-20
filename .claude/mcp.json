@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "notion": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-notion"
+      ],
+      "env": {
+        "NOTION_API_KEY": "secret_XXX_REPLACE_WITH_YOUR_NOTION_KEY"
+      }
+    },
+    "n8n-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "n8n-mcp"
+      ]
+    },
+    "n8n-server": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@leonardsellem/n8n-mcp-server"
+      ],
+      "env": {
+        "N8N_API_KEY": "YOUR_N8N_API_KEY_HERE",
+        "N8N_BASE_URL": "https://n8n.srv859352.hstgr.cloud"
+      }
+    }
+  }
+}
