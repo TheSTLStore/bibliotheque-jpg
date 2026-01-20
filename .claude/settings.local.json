@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm install:*)",
+      "Bash(git push:*)",
+      "Bash(npm run build:*)",
+      "Bash(find app/api/items -type f -name \"route.ts\" -exec sh -c 'if [ $\\(wc -l < \"\"$1\"\"\\) -le 1 ]; then echo \"\"Removing empty: $1\"\"; rm \"\"$1\"\"; fi' _ {} ;)",
+      "Bash(npm run dev:*)"
+    ]
+  }
+}
