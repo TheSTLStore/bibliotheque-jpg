@@ -1,131 +1,222 @@
-# TODO - Core Notion Integration
+# TODO - Authentication System
 
-Cette branche contient toute l'intégration de base avec l'API Notion pour gérer la base de données des items culturels.
+Cette branche contient le système d'authentification simplifié (trust-based) pour la famille et les associations.
+
+**Note:** Le code Notion (Phase 1) a été fusionné depuis `main` et est maintenant disponible dans cette branche.
 
 ## Configuration
 
-- [x] Installer `@notionhq/client`
-- [x] Créer `.env.example` avec les variables requises
-- [x] Setup Notion client dans `lib/notion.ts`
+- [ ] Ajouter `FAMILY_PASSWORD` à `.env.example`
+- [ ] Ajouter `ASSOCIATION_SLUGS` à `.env.example` (format: `slug:DisplayName,slug2:Name2`)
+- [ ] Documenter le format des slugs d'association
 
 ## TypeScript Types
 
-- [x] Définir `HeritageItem` interface dans `types/index.ts`
-- [x] Définir types pour les propriétés Notion (Status, Etat, Type)
-- [x] Créer types pour les réponses API Notion
-- [x] Créer types pour les filtres et options de tri
+- [ ] Définir `AuthUser` interface dans `types/index.ts`
+- [ ] Définir `AssociationConfig` interface
+- [ ] Créer types pour les réponses d'authentification
+- [ ] Créer enum pour les types d'utilisateurs (Family, Association)
 
-## Core Notion Functions
+## Core Auth Utilities (`lib/auth.ts`)
 
-### Read Operations
+### Family Authentication
 
-- [x] `getAllItems()` - Récupérer tous les items avec pagination
-- [x] `getItemById(id: string)` - Récupérer un item spécifique
-- [x] `getItemsByStatus(status: string)` - Filtrer par Status_Dispo
-- [x] `getItemsByType(type: string)` - Filtrer par Type (Livre/CD/Vinyle)
-- [x] `searchItems(query: string)` - Recherche textuelle (titre + auteur)
-- [x] `getItemsByUser(userName: string)` - Items réservés par un utilisateur
+- [ ] `validateFamilyPassword(password: string)` - Vérifier mot de passe famille
+- [ ] `setFamilyNameCookie(name: string)` - Créer cookie avec nom famille
+- [ ] `getFamilyNameFromCookie()` - Récupérer nom depuis cookie
+- [ ] `clearFamilyNameCookie()` - Supprimer cookie (logout)
+- [ ] Implémenter hash comparison (bcrypt ou similaire)
 
-### Write Operations
+### Association Authentication
 
-- [x] `reserveItem(itemId: string, userName: string)` - Réserver un item
-- [x] `cancelReservation(itemId: string)` - Annuler une réservation
-- [x] `addOption(itemId: string, userName: string)` - Ajouter une option
-- [x] `removeOption(itemId: string, userName: string)` - Retirer une option
-- [x] `promoteFirstOption(itemId: string)` - Promouvoir première option
+- [ ] `parseAssociationSlugs()` - Parser ASSOCIATION_SLUGS env variable
+- [ ] `validateAssociationSlug(slug: string)` - Vérifier slug valide
+- [ ] `getAssociationName(slug: string)` - Récupérer nom display depuis slug
+- [ ] `isValidAssociation(slug: string)` - Check si slug existe
 
-## Utility Functions
+### User Context
 
-- [x] `parseNotionItem()` - Transformer réponse Notion en HeritageItem
-- [x] `parseOptionsQueue()` - Parser la string comma-separated Options_Par
-- [x] `serializeOptionsQueue()` - Sérialiser array en string
-- [x] `addToQueue()` - Ajouter nom à la queue
-- [x] `removeFromQueue()` - Retirer nom de la queue
-- [x] `getFirstInQueue()` - Récupérer premier en queue
+- [ ] `getCurrentUser(request: NextRequest)` - Identifier user depuis request
+- [ ] `getUserType()` - Retourner "family" ou "association"
+- [ ] `requireAuth()` - Middleware helper pour routes protégées
+- [ ] `requireFamilyAuth()` - Middleware pour routes famille uniquement
 
-## Pagination & Performance
+## API Routes
 
-- [x] Implémenter pagination complète (handle has_more, next_cursor)
-- [x] Ajouter rate limiting (3 req/sec max)
-- [x] Implémenter retry logic pour erreurs réseau
-- [ ] Ajouter logging pour debug Notion API calls
+### `/api/auth/route.ts`
+
+- [ ] POST - Authentification famille
+  - [ ] Valider password
+  - [ ] Valider nom (non-vide, max length)
+  - [ ] Créer cookie
+  - [ ] Retourner success + user info
+  - [ ] Gérer erreurs (wrong password, missing fields)
+
+### `/api/auth/logout/route.ts`
+
+- [ ] POST - Logout famille
+  - [ ] Supprimer cookie
+  - [ ] Retourner success
+
+### `/api/auth/check/route.ts`
+
+- [ ] GET - Vérifier session active
+  - [ ] Lire cookie
+  - [ ] Retourner user info ou null
+
+## Cookie Management
+
+- [ ] Définir cookie options (httpOnly: false pour accès client)
+- [ ] Définir maxAge (1 an)
+- [ ] Définir path (/)
+- [ ] Implémenter secure flag pour production
+- [ ] Implémenter sameSite policy
+
+## Middleware (`middleware.ts`)
+
+- [ ] Créer middleware Next.js pour routes protégées
+- [ ] Rediriger vers `/` si pas authentifié
+- [ ] Autoriser routes publiques (`/public/[slug]`)
+- [ ] Autoriser routes API publiques
+- [ ] Gérer cas association (vérifier slug valide)
+
+### Routes Protégées
+
+```typescript
+const protectedRoutes = [
+  '/gallery',
+  '/dashboard',
+  '/api/items',
+  '/api/dashboard',
+  '/api/export'
+];
+```
+
+## Login Page (`app/page.tsx`)
+
+- [ ] Créer formulaire login
+  - [ ] Input password (type="password")
+  - [ ] Input nom (type="text", placeholder="Ton prénom")
+  - [ ] Submit button
+  - [ ] Error display
+  - [ ] Loading state
+- [ ] Appeler `/api/auth` au submit
+- [ ] Rediriger vers `/gallery` au success
+- [ ] Gérer erreurs réseau
+- [ ] Valider inputs côté client
+
+## Association Public Routes
+
+### Page `/app/public/[slug]/page.tsx`
+
+- [ ] Valider slug dans params
+- [ ] Afficher nom association dans header
+- [ ] Rediriger vers 404 si slug invalide
+- [ ] Passer slug en context pour API calls
+
+### API Route `/app/api/public/[slug]/items/route.ts`
+
+- [ ] GET - Lister items disponibles pour association
+  - [ ] Valider slug
+  - [ ] Filtrer: `Status_Dispo = Disponible` AND `Status_Vente = A donner`
+  - [ ] Retourner liste
+
+## Security
+
+- [ ] NEVER exposer le password en clair dans le frontend
+- [ ] Valider tous les inputs côté serveur
+- [ ] Implémenter rate limiting sur `/api/auth` (max 5 tentatives/min)
+- [ ] Logger tentatives de login échouées
+- [ ] Sanitiser le nom utilisateur (XSS prevention)
+- [ ] Vérifier longueur max du nom (< 50 caractères)
 
 ## Error Handling
 
-- [x] Gérer erreurs 404 (item not found)
-- [x] Gérer erreurs 409 (conflict - item déjà réservé)
-- [x] Gérer erreurs 429 (rate limit exceeded)
-- [x] Gérer erreurs réseau (timeout, connection)
-- [x] Créer custom error types
-
-## Conflict Detection
-
-- [x] `verifyItemAvailable()` - Vérifier statut avant réservation
-- [x] `checkForConflict()` - Détecter changements concurrents
-- [x] Implémenter optimistic locking pattern
+- [ ] Gérer password incorrect (401)
+- [ ] Gérer champs manquants (400)
+- [ ] Gérer session expirée (redirect to login)
+- [ ] Gérer slug invalide (404)
+- [ ] Messages d'erreur en français pour l'UI
 
 ## Testing
 
-- [ ] Créer mock Notion responses pour tests
-- [ ] Tester pagination avec >100 items
-- [ ] Tester gestion des options queue
-- [ ] Tester conflict detection
-- [ ] Tester rate limiting
+- [ ] Tester login avec bon password
+- [ ] Tester login avec mauvais password
+- [ ] Tester champs vides
+- [ ] Tester persistance cookie après refresh
+- [ ] Tester logout
+- [ ] Tester accès routes protégées sans auth
+- [ ] Tester validation slug association
+- [ ] Tester slug invalide
 
 ## Documentation
 
-- [x] Documenter chaque fonction (JSDoc) - Code is self-documenting with TypeScript
-- [x] Ajouter exemples d'usage - See NOTION_SCHEMA.md
-- [x] Documenter schéma Notion properties mapping - See types/index.ts
-- [ ] Créer guide troubleshooting Notion API
+- [ ] Documenter le flow d'authentification famille
+- [ ] Documenter le flow association (URL-based)
+- [ ] Expliquer pourquoi httpOnly: false
+- [ ] Guide: comment ajouter une nouvelle association
+- [ ] Guide: comment changer le mot de passe famille
 
 ## Notes Techniques
 
-### Notion Property Mapping
+### Cookie Structure
 
 ```typescript
-// Notion API response → HeritageItem
-{
-  id: page.id,
-  titre: page.properties.Titre.title[0]?.plain_text,
-  auteur_artiste: page.properties.Auteur_Artiste.rich_text[0]?.plain_text,
-  type: page.properties.Type.select?.name,
-  etat: page.properties.Etat.select?.name,
-  status_dispo: page.properties.Status_Dispo.status?.name,
-  reserve_par: page.properties.Reserve_Par.rich_text[0]?.plain_text,
-  options_par: parseOptionsQueue(page.properties.Options_Par.rich_text[0]?.plain_text),
-  image_url: page.properties.Image_URL.url,
-  tags: page.properties.Tags.multi_select.map(t => t.name),
-  annee: page.properties.Annee.number,
-  date_ajout: page.properties.Date_Ajout.date?.start
+// Next.js cookie options
+const cookieOptions = {
+  name: 'familyName',
+  value: userName,
+  maxAge: 60 * 60 * 24 * 365, // 1 year
+  path: '/',
+  httpOnly: false, // Allow client-side access
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const
+};
+```
+
+### Association Slugs Parsing
+
+```typescript
+// From env: "mediatheque-orgelet:Médiathèque Orgelet,biblio-lons:Bibliothèque Lons"
+function parseAssociationSlugs(): Map<string, string> {
+  const slugsEnv = process.env.ASSOCIATION_SLUGS || '';
+  const map = new Map<string, string>();
+
+  slugsEnv.split(',').forEach(pair => {
+    const [slug, name] = pair.split(':');
+    if (slug && name) {
+      map.set(slug.trim(), name.trim());
+    }
+  });
+
+  return map;
 }
 ```
 
-### Rate Limiting Strategy
+### Middleware Pattern
 
 ```typescript
-// Implement token bucket or simple delay
-let lastCallTime = 0;
-const MIN_DELAY_MS = 334; // ~3 requests/second
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-async function rateLimitedCall<T>(fn: () => Promise<T>): Promise<T> {
-  const now = Date.now();
-  const timeSinceLastCall = now - lastCallTime;
-  if (timeSinceLastCall < MIN_DELAY_MS) {
-    await delay(MIN_DELAY_MS - timeSinceLastCall);
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Allow public routes
+  if (pathname.startsWith('/public/')) {
+    return NextResponse.next();
   }
-  lastCallTime = Date.now();
-  return fn();
-}
-```
 
-### Conflict Detection Example
+  // Check family auth for protected routes
+  if (protectedRoutes.some(route => pathname.startsWith(route))) {
+    const familyName = request.cookies.get('familyName')?.value;
+    if (!familyName) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+  }
 
-```typescript
-// Before updating, verify current state
-const currentItem = await notion.pages.retrieve({ page_id: itemId });
-if (currentItem.properties.Status_Dispo.status.name !== 'Disponible') {
-  throw new ConflictError('Item already reserved');
+  return NextResponse.next();
 }
 ```
 
@@ -133,47 +224,14 @@ if (currentItem.properties.Status_Dispo.status.name !== 'Disponible') {
 
 ```json
 {
-  "@notionhq/client": "^2.2.15"
+  "bcryptjs": "^2.4.3",
+  "@types/bcryptjs": "^2.4.6"
 }
 ```
 
-## Fonctions Implémentées
+## Points d'Attention
 
-### lib/notion.ts
-
-| Fonction | Description |
-|----------|-------------|
-| `getAllItems(filters?, sort?)` | Récupère tous les items avec pagination |
-| `getItemsPaginated(filters?, sort?, cursor?, pageSize?)` | Version paginée avec curseur |
-| `getItemById(itemId)` | Récupère un item par son ID |
-| `getItemsByStatus(status)` | Filtre par Status_Dispo |
-| `getItemsByType(type)` | Filtre par Type |
-| `searchItems(query)` | Recherche textuelle |
-| `getItemsByUser(userName)` | Items réservés par un utilisateur |
-| `getItemsWithUserOption(userName)` | Items où l'utilisateur a une option |
-| `getFamilyItems()` | Items pour vue famille (tous "A donner") |
-| `getAssociationItems()` | Items pour associations (disponibles uniquement) |
-| `reserveItem(itemId, userName)` | Réserver un item |
-| `cancelReservation(itemId)` | Annuler une réservation |
-| `addOption(itemId, userName)` | Ajouter une option |
-| `removeOption(itemId, userName)` | Retirer une option |
-| `markAsGiven(itemId)` | Marquer comme donné |
-| `verifyItemAvailable(itemId)` | Vérifier disponibilité |
-| `checkForConflict(itemId, expectedStatus)` | Détecter conflits |
-| `getItemStats()` | Statistiques globales |
-
-### types/index.ts
-
-| Type | Description |
-|------|-------------|
-| `HeritageItem` | Interface principale pour un item |
-| `ItemType` | 'Livre' \| 'CD' \| 'Vinyle' |
-| `ItemCondition` | État physique de l'item |
-| `AvailabilityStatus` | Statut de disponibilité |
-| `SaleStatus` | 'A donner' \| 'A vendre' |
-| `ItemFilters` | Options de filtrage |
-| `SortOptions` | Options de tri |
-| `NotionError` | Classe d'erreur de base |
-| `ItemNotFoundError` | Erreur 404 |
-| `ConflictError` | Erreur 409 |
-| `RateLimitError` | Erreur 429 |
+1. **Pas de comptes utilisateurs** - C'est intentionnel, système basé sur la confiance
+2. **httpOnly: false** - Nécessaire pour que le client puisse lire le nom pour l'UI
+3. **Slug = Auth pour associations** - L'URL elle-même est le "secret"
+4. **Validation server-side obligatoire** - Jamais faire confiance au client

@@ -155,3 +155,66 @@ export interface CancelResult {
   promotedUser: string | null;
   item: HeritageItem;
 }
+
+// Authentication Types
+
+export type UserType = 'family' | 'association';
+
+export interface AuthUser {
+  name: string;
+  type: UserType;
+  associationSlug?: string; // Only for association users
+}
+
+export interface AssociationConfig {
+  slug: string;
+  displayName: string;
+}
+
+export interface LoginRequest {
+  password: string;
+  name: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  user?: AuthUser;
+  error?: string;
+}
+
+export interface AuthCheckResponse {
+  authenticated: boolean;
+  user: AuthUser | null;
+}
+
+export class AuthError extends Error {
+  constructor(
+    message: string,
+    public code: string,
+    public status: number
+  ) {
+    super(message);
+    this.name = 'AuthError';
+  }
+}
+
+export class InvalidPasswordError extends AuthError {
+  constructor() {
+    super('Invalid password', 'INVALID_PASSWORD', 401);
+    this.name = 'InvalidPasswordError';
+  }
+}
+
+export class InvalidSlugError extends AuthError {
+  constructor(slug: string) {
+    super(`Invalid association slug: ${slug}`, 'INVALID_SLUG', 404);
+    this.name = 'InvalidSlugError';
+  }
+}
+
+export class MissingFieldsError extends AuthError {
+  constructor(fields: string[]) {
+    super(`Missing required fields: ${fields.join(', ')}`, 'MISSING_FIELDS', 400);
+    this.name = 'MissingFieldsError';
+  }
+}
