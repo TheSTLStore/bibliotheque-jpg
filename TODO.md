@@ -2,6 +2,8 @@
 
 Cette branche contient le système d'authentification simplifié (trust-based) pour la famille et les associations.
 
+**Note:** Le code Notion (Phase 1) a été fusionné depuis `main` et est maintenant disponible dans cette branche.
+
 ## Configuration
 
 - [ ] Ajouter `FAMILY_PASSWORD` à `.env.example`
