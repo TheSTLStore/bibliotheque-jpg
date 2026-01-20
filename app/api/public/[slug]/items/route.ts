@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { validateAssociationSlug, InvalidSlugError } from '@/lib/auth';
+import { validateAssociationSlug } from '@/lib/auth';
 import { getAssociationItems } from '@/lib/notion';
+import { InvalidSlugError } from '@/types';
 
 interface RouteParams {
   params: {
