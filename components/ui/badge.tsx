@@ -21,6 +21,8 @@ const badgeVariants = cva(
           "border-transparent bg-orange-500 text-white",
         option:
           "border-transparent bg-blue-500 text-white",
+        warning:
+          "border-transparent bg-orange-500 text-white",
         donne:
           "border-transparent bg-gray-400 text-white",
         livre:
