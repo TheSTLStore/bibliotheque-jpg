@@ -1,5 +1,5 @@
 {
-  "name": "Bibliotheque JPG - Ingestion",
+  "name": "Bibliotheque JPG - Ingestion v2",
   "nodes": [
     {
       "parameters": {
@@ -20,26 +20,16 @@
         "options": {}
       },
       "id": "trigger-drive",
-      "name": "Google Drive Trigger",
+      "name": "1. Google Drive Trigger",
       "type": "n8n-nodes-base.googleDriveTrigger",
       "typeVersion": 1,
-      "position": [0, 0],
+      "position": [0, 300],
       "credentials": {
         "googleDriveOAuth2Api": {
           "id": "GOOGLE_DRIVE_CREDENTIAL_ID",
           "name": "Google Drive"
         }
       }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Detect item type from filename\nconst filename = $input.first().json.name.toLowerCase();\n\nlet type = 'Livre'; // Default\nlet extension = filename.split('.').pop();\n\n// Music-related keywords\nconst musicKeywords = ['cd', 'album', 'musique', 'music', 'audio'];\nconst vinylKeywords = ['vinyle', 'vinyl', '33t', '45t', 'lp'];\n\nif (musicKeywords.some(k => filename.includes(k))) {\n  type = 'CD';\n} else if (vinylKeywords.some(k => filename.includes(k))) {\n  type = 'Vinyle';\n}\n\nreturn {\n  json: {\n    ...$input.first().json,\n    detected_type: type,\n    file_extension: extension\n  }\n};"
-      },
-      "id": "detect-type",
-      "name": "Detect Type",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [220, 0]
     },
     {
       "parameters": {
@@ -52,10 +42,10 @@
         "options": {}
       },
       "id": "download-file",
-      "name": "Download from Drive",
+      "name": "2. Download Image",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [440, 0],
+      "position": [220, 300],
       "credentials": {
         "googleDriveOAuth2Api": {
           "id": "GOOGLE_DRIVE_CREDENTIAL_ID",
@@ -72,25 +62,25 @@
           "values": [
             {
               "role": "system",
-              "content": "Tu es un assistant qui analyse des photos d'objets culturels (livres, CDs, vinyles) pour une bibliothèque familiale. Extrais les informations suivantes au format JSON strict:\n{\n  \"titre\": \"Le titre principal\",\n  \"auteur_artiste\": \"Auteur ou artiste\",\n  \"annee\": 2000,\n  \"etat\": \"Neuf|Très bon|Bon|Acceptable|Mauvais\",\n  \"tags\": [\"tag1\", \"tag2\"],\n  \"description\": \"Brève description si visible\"\n}\n\nRègles:\n- Si une info n'est pas visible, utilise null\n- L'année doit être un nombre ou null\n- L'état est une estimation basée sur l'apparence\n- Les tags peuvent inclure: genre, collection, éditeur, etc.\n- Réponds UNIQUEMENT avec le JSON, pas de texte avant/après"
+              "content": "Tu es un assistant spécialisé dans la détection de codes-barres sur les images. Analyse l'image et réponds UNIQUEMENT avec un JSON:\n\n{\n  \"has_barcode\": true/false,\n  \"barcode_type\": \"ISBN-13\" | \"ISBN-10\" | \"EAN-13\" | \"UPC\" | null,\n  \"barcode_value\": \"1234567890123\" | null,\n  \"item_type\": \"Livre\" | \"CD\" | \"Vinyle\",\n  \"confidence\": 0.0-1.0\n}\n\nRègles:\n- Cherche un code-barres (généralement au dos du livre/CD/vinyle)\n- ISBN pour les livres (10 ou 13 chiffres)\n- EAN/UPC pour les CDs et vinyles\n- Si pas de code-barres visible, has_barcode = false\n- Estime le type d'objet (Livre, CD, Vinyle) même sans code-barres\n- Réponds UNIQUEMENT avec le JSON, rien d'autre"
             },
             {
               "role": "user",
               "type": "image",
               "image": "={{ $binary.data.data }}",
-              "content": "Analyse cette image et extrais les métadonnées de l'objet."
+              "content": "Analyse cette image pour détecter un code-barres."
             }
           ]
         },
         "model": "gpt-4o",
-        "temperature": 0.3,
-        "maxTokens": 500
+        "temperature": 0.1,
+        "maxTokens": 200
       },
-      "id": "openai-vision",
-      "name": "OpenAI Vision",
+      "id": "detect-barcode",
+      "name": "3. Detect Barcode (Vision)",
       "type": "n8n-nodes-base.openAi",
       "typeVersion": 1,
-      "position": [660, 0],
+      "position": [440, 300],
       "credentials": {
         "openAiApi": {
           "id": "OPENAI_CREDENTIAL_ID",
@@ -100,13 +90,280 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse OpenAI response and merge with detected type\nconst response = $input.first().json.message.content;\nconst previousData = $('Detect Type').first().json;\n\nlet parsed;\ntry {\n  // Clean the response in case there's markdown code blocks\n  let cleanResponse = response.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleanResponse);\n} catch (e) {\n  // If parsing fails, create minimal object\n  parsed = {\n    titre: previousData.name.replace(/\\.[^.]+$/, ''),\n    auteur_artiste: null,\n    annee: null,\n    etat: 'Bon',\n    tags: [],\n    description: null\n  };\n}\n\nreturn {\n  json: {\n    file_id: previousData.id,\n    file_name: previousData.name,\n    type: previousData.detected_type,\n    titre: parsed.titre || previousData.name.replace(/\\.[^.]+$/, ''),\n    auteur_artiste: parsed.auteur_artiste || '',\n    annee: parsed.annee,\n    etat: parsed.etat || 'Bon',\n    tags: parsed.tags || [],\n    description: parsed.description || ''\n  },\n  binary: $input.first().binary\n};"
+        "jsCode": "// Parse barcode detection response\nconst response = $input.first().json.message.content;\nconst fileData = $('1. Google Drive Trigger').first().json;\n\nlet parsed;\ntry {\n  let cleanResponse = response.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleanResponse);\n} catch (e) {\n  parsed = {\n    has_barcode: false,\n    barcode_type: null,\n    barcode_value: null,\n    item_type: 'Livre',\n    confidence: 0\n  };\n}\n\nreturn {\n  json: {\n    file_id: fileData.id,\n    file_name: fileData.name,\n    has_barcode: parsed.has_barcode || false,\n    barcode_type: parsed.barcode_type,\n    barcode_value: parsed.barcode_value,\n    item_type: parsed.item_type || 'Livre',\n    confidence: parsed.confidence || 0\n  },\n  binary: $('2. Download Image').first().binary\n};"
       },
-      "id": "parse-response",
-      "name": "Parse OpenAI Response",
+      "id": "parse-barcode",
+      "name": "4. Parse Barcode Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [880, 0]
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-barcode",
+              "leftValue": "={{ $json.has_barcode }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "has-value",
+              "leftValue": "={{ $json.barcode_value }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-barcode",
+      "name": "5. Has Barcode?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/books/v1/volumes?q=isbn:{{ $json.barcode_value }}",
+        "options": {}
+      },
+      "id": "google-books-api",
+      "name": "6a. Google Books API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1100, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Google Books API response\nconst response = $input.first().json;\nconst prevData = $('4. Parse Barcode Result').first().json;\n\nlet bookData = {\n  found: false,\n  titre: null,\n  auteur_artiste: null,\n  annee: null,\n  editeur: null,\n  description: null,\n  cover_url: null,\n  tags: [],\n  isbn: prevData.barcode_value\n};\n\nif (response.totalItems > 0 && response.items && response.items[0]) {\n  const book = response.items[0].volumeInfo;\n  \n  bookData.found = true;\n  bookData.titre = book.title || null;\n  bookData.auteur_artiste = book.authors ? book.authors.join(', ') : null;\n  bookData.annee = book.publishedDate ? parseInt(book.publishedDate.substring(0, 4)) : null;\n  bookData.editeur = book.publisher || null;\n  bookData.description = book.description ? book.description.substring(0, 500) : null;\n  \n  // Get highest quality cover\n  if (book.imageLinks) {\n    bookData.cover_url = book.imageLinks.extraLarge || \n                         book.imageLinks.large || \n                         book.imageLinks.medium || \n                         book.imageLinks.thumbnail || null;\n    // Remove zoom parameter for better quality\n    if (bookData.cover_url) {\n      bookData.cover_url = bookData.cover_url.replace('&edge=curl', '').replace('zoom=1', 'zoom=3');\n    }\n  }\n  \n  // Extract tags from categories\n  if (book.categories) {\n    bookData.tags = book.categories.slice(0, 5);\n  }\n}\n\nreturn {\n  json: {\n    ...prevData,\n    api_source: 'google_books',\n    api_found: bookData.found,\n    titre: bookData.titre,\n    auteur_artiste: bookData.auteur_artiste,\n    annee: bookData.annee,\n    editeur: bookData.editeur,\n    description: bookData.description,\n    cover_url: bookData.cover_url,\n    tags: bookData.tags,\n    isbn: bookData.isbn\n  },\n  binary: $('4. Parse Barcode Result').first().binary\n};"
+      },
+      "id": "parse-google-books",
+      "name": "6b. Parse Google Books",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "not-found",
+              "leftValue": "={{ $json.api_found }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-google-found",
+      "name": "6c. Book Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1540, 100]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://openlibrary.org/api/books?bibkeys=ISBN:{{ $json.isbn }}&format=json&jscmd=data",
+        "options": {}
+      },
+      "id": "open-library-api",
+      "name": "6d. Open Library API (fallback)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1760, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Open Library API response\nconst response = $input.first().json;\nconst prevData = $('6b. Parse Google Books').first().json;\n\nconst key = `ISBN:${prevData.isbn}`;\nlet bookData = { ...prevData };\n\nif (response[key]) {\n  const book = response[key];\n  \n  bookData.api_source = 'open_library';\n  bookData.api_found = true;\n  bookData.titre = book.title || bookData.titre;\n  bookData.auteur_artiste = book.authors ? book.authors.map(a => a.name).join(', ') : bookData.auteur_artiste;\n  bookData.annee = book.publish_date ? parseInt(book.publish_date.match(/\\d{4}/)?.[0]) : bookData.annee;\n  bookData.editeur = book.publishers ? book.publishers.map(p => p.name).join(', ') : bookData.editeur;\n  \n  // Get cover\n  if (book.cover && book.cover.large) {\n    bookData.cover_url = book.cover.large;\n  } else if (book.cover && book.cover.medium) {\n    bookData.cover_url = book.cover.medium;\n  }\n  \n  // Get subjects as tags\n  if (book.subjects) {\n    bookData.tags = book.subjects.slice(0, 5).map(s => s.name || s);\n  }\n}\n\nreturn {\n  json: bookData,\n  binary: $('4. Parse Barcode Result').first().binary\n};"
+      },
+      "id": "parse-open-library",
+      "name": "6e. Parse Open Library",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 0]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "options": {},
+        "requestOptions": {},
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Tu es un expert en identification d'objets culturels (livres, CDs, vinyles). Analyse cette image de couverture et extrais toutes les informations visibles.\n\nRéponds UNIQUEMENT avec un JSON:\n{\n  \"titre\": \"Titre exact visible sur la couverture\",\n  \"auteur_artiste\": \"Auteur ou artiste visible\",\n  \"type\": \"Livre\" | \"CD\" | \"Vinyle\",\n  \"annee\": 2000 | null,\n  \"editeur\": \"Éditeur/Label si visible\" | null,\n  \"collection\": \"Nom de la collection\" | null,\n  \"etat\": \"Neuf\" | \"Très bon\" | \"Bon\" | \"Acceptable\" | \"Mauvais\",\n  \"tags\": [\"genre1\", \"genre2\"],\n  \"description\": \"Brève description de ce que tu vois\",\n  \"search_query\": \"requête optimale pour chercher ce livre/cd sur internet\"\n}\n\nRègles:\n- Lis TOUT le texte visible sur la couverture\n- Pour search_query, crée une requête Google optimale (titre + auteur + type)\n- Estime l'état physique de l'objet\n- Tags: genre littéraire/musical, thème, époque, etc.\n- Réponds UNIQUEMENT avec le JSON"
+            },
+            {
+              "role": "user",
+              "type": "image",
+              "image": "={{ $binary.data.data }}",
+              "content": "Analyse cette couverture et extrais toutes les informations."
+            }
+          ]
+        },
+        "model": "gpt-4o",
+        "temperature": 0.2,
+        "maxTokens": 600
+      },
+      "id": "analyze-cover",
+      "name": "7a. Analyze Cover (Vision)",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1100, 500],
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse cover analysis response\nconst response = $input.first().json.message.content;\nconst prevData = $('4. Parse Barcode Result').first().json;\n\nlet parsed;\ntry {\n  let cleanResponse = response.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleanResponse);\n} catch (e) {\n  parsed = {\n    titre: prevData.file_name.replace(/\\.[^.]+$/, ''),\n    auteur_artiste: null,\n    type: prevData.item_type,\n    annee: null,\n    etat: 'Bon',\n    tags: [],\n    description: null,\n    search_query: prevData.file_name\n  };\n}\n\nreturn {\n  json: {\n    ...prevData,\n    api_source: 'vision_analysis',\n    api_found: true,\n    titre: parsed.titre,\n    auteur_artiste: parsed.auteur_artiste,\n    item_type: parsed.type || prevData.item_type,\n    annee: parsed.annee,\n    editeur: parsed.editeur,\n    collection: parsed.collection,\n    etat: parsed.etat || 'Bon',\n    tags: parsed.tags || [],\n    description: parsed.description,\n    search_query: parsed.search_query,\n    cover_url: null\n  },\n  binary: $('4. Parse Barcode Result').first().binary\n};"
+      },
+      "id": "parse-cover-analysis",
+      "name": "7b. Parse Cover Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 500]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/customsearch/v1?key={{ $vars.GOOGLE_SEARCH_API_KEY }}&cx={{ $vars.GOOGLE_SEARCH_CX }}&q={{ encodeURIComponent($json.search_query + ' couverture') }}&searchType=image&num=1&imgSize=large",
+        "options": {}
+      },
+      "id": "google-image-search",
+      "name": "7c. Google Image Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1540, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract cover URL from Google Image Search\nconst response = $input.first().json;\nconst prevData = $('7b. Parse Cover Analysis').first().json;\n\nlet coverUrl = null;\n\nif (response.items && response.items.length > 0) {\n  coverUrl = response.items[0].link;\n}\n\nreturn {\n  json: {\n    ...prevData,\n    cover_url: coverUrl\n  },\n  binary: $('4. Parse Barcode Result').first().binary\n};"
+      },
+      "id": "parse-image-search",
+      "name": "7d. Parse Image Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, 500]
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "output": "all"
+      },
+      "id": "merge-branches",
+      "name": "8. Merge All Branches",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2200, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-cover-url",
+              "leftValue": "={{ $json.cover_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-cover-url",
+      "name": "9. Has Cover URL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2420, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.cover_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "download-cover",
+      "name": "10a. Download Cover from Web",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2640, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare data with downloaded cover\nconst prevData = $('9. Has Cover URL?').first().json;\nconst downloadedBinary = $input.first().binary;\n\nreturn {\n  json: {\n    ...prevData,\n    use_web_cover: true\n  },\n  binary: downloadedBinary\n};"
+      },
+      "id": "prepare-web-cover",
+      "name": "10b. Prepare Web Cover",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2860, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Use original image as cover (no web cover found)\nconst prevData = $('9. Has Cover URL?').first().json;\nconst originalBinary = $('4. Parse Barcode Result').first().binary;\n\nreturn {\n  json: {\n    ...prevData,\n    use_web_cover: false\n  },\n  binary: originalBinary\n};"
+      },
+      "id": "use-original-image",
+      "name": "10c. Use Original Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2860, 400]
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "output": "all"
+      },
+      "id": "merge-cover",
+      "name": "11. Merge Cover Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [3080, 300]
     },
     {
       "parameters": {
@@ -115,15 +372,15 @@
         "binaryPropertyName": "data",
         "options": {
           "folder": "bibliotheque-jpg",
-          "publicId": "={{ $json.file_id }}",
+          "publicId": "={{ $json.file_id }}_{{ Date.now() }}",
           "resourceType": "image"
         }
       },
       "id": "cloudinary-upload",
-      "name": "Upload to Cloudinary",
+      "name": "12. Upload to Cloudinary",
       "type": "n8n-nodes-base.cloudinary",
       "typeVersion": 1,
-      "position": [1100, 0],
+      "position": [3300, 300],
       "credentials": {
         "cloudinaryApi": {
           "id": "CLOUDINARY_CREDENTIAL_ID",
@@ -133,13 +390,13 @@
     },
     {
       "parameters": {
-        "jsCode": "// Prepare Notion page properties\nconst data = $('Parse OpenAI Response').first().json;\nconst cloudinaryUrl = $input.first().json.secure_url;\n\nreturn {\n  json: {\n    parent: {\n      database_id: $vars.NOTION_DATABASE_ID\n    },\n    properties: {\n      \"Titre\": {\n        \"title\": [\n          {\n            \"text\": {\n              \"content\": data.titre || 'Sans titre'\n            }\n          }\n        ]\n      },\n      \"Auteur_Artiste\": {\n        \"rich_text\": [\n          {\n            \"text\": {\n              \"content\": data.auteur_artiste || ''\n            }\n          }\n        ]\n      },\n      \"Type\": {\n        \"select\": {\n          \"name\": data.type\n        }\n      },\n      \"Etat\": {\n        \"select\": {\n          \"name\": data.etat\n        }\n      },\n      \"Status_Dispo\": {\n        \"status\": {\n          \"name\": \"Disponible\"\n        }\n      },\n      \"Status_Vente\": {\n        \"select\": {\n          \"name\": \"A donner\"\n        }\n      },\n      \"Image_URL\": {\n        \"url\": cloudinaryUrl\n      },\n      \"Tags\": {\n        \"multi_select\": data.tags.map(tag => ({ name: tag }))\n      },\n      \"Annee\": data.annee ? {\n        \"number\": data.annee\n      } : { \"number\": null },\n      \"Date_Ajout\": {\n        \"date\": {\n          \"start\": new Date().toISOString().split('T')[0]\n        }\n      },\n      \"Source_File\": {\n        \"rich_text\": [\n          {\n            \"text\": {\n              \"content\": data.file_name\n            }\n          }\n        ]\n      }\n    }\n  }\n};"
+        "jsCode": "// Prepare final Notion page data\nconst cloudinaryUrl = $input.first().json.secure_url;\nconst prevData = $('11. Merge Cover Sources').first().json;\n\n// Determine the item type\nlet itemType = prevData.item_type || 'Livre';\nif (itemType !== 'Livre' && itemType !== 'CD' && itemType !== 'Vinyle') {\n  itemType = 'Livre';\n}\n\n// Clean and validate tags\nlet tags = prevData.tags || [];\nif (!Array.isArray(tags)) tags = [];\ntags = tags.filter(t => t && typeof t === 'string').slice(0, 10);\n\n// Validate etat\nconst validEtats = ['Neuf', 'Très bon', 'Bon', 'Acceptable', 'Mauvais'];\nlet etat = prevData.etat || 'Bon';\nif (!validEtats.includes(etat)) etat = 'Bon';\n\nreturn {\n  json: {\n    parent: {\n      database_id: $vars.NOTION_DATABASE_ID\n    },\n    properties: {\n      \"Titre\": {\n        \"title\": [\n          {\n            \"text\": {\n              \"content\": (prevData.titre || 'Sans titre').substring(0, 200)\n            }\n          }\n        ]\n      },\n      \"Auteur_Artiste\": {\n        \"rich_text\": [\n          {\n            \"text\": {\n              \"content\": (prevData.auteur_artiste || '').substring(0, 200)\n            }\n          }\n        ]\n      },\n      \"Type\": {\n        \"select\": {\n          \"name\": itemType\n        }\n      },\n      \"Etat\": {\n        \"select\": {\n          \"name\": etat\n        }\n      },\n      \"Status_Dispo\": {\n        \"status\": {\n          \"name\": \"Disponible\"\n        }\n      },\n      \"Status_Vente\": {\n        \"select\": {\n          \"name\": \"A donner\"\n        }\n      },\n      \"Image_URL\": {\n        \"url\": cloudinaryUrl\n      },\n      \"Tags\": {\n        \"multi_select\": tags.map(tag => ({ name: tag.substring(0, 50) }))\n      },\n      \"Annee\": prevData.annee && !isNaN(prevData.annee) ? {\n        \"number\": parseInt(prevData.annee)\n      } : { \"number\": null },\n      \"Date_Ajout\": {\n        \"date\": {\n          \"start\": new Date().toISOString().split('T')[0]\n        }\n      },\n      \"Source_File\": {\n        \"rich_text\": [\n          {\n            \"text\": {\n              \"content\": prevData.file_name || ''\n            }\n          }\n        ]\n      }\n    },\n    _metadata: {\n      api_source: prevData.api_source,\n      isbn: prevData.isbn,\n      barcode_detected: prevData.has_barcode,\n      web_cover_used: prevData.use_web_cover,\n      editeur: prevData.editeur,\n      description: prevData.description\n    }\n  }\n};"
       },
       "id": "prepare-notion",
-      "name": "Prepare Notion Data",
+      "name": "13. Prepare Notion Data",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1320, 0]
+      "position": [3520, 300]
     },
     {
       "parameters": {
@@ -158,14 +415,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify({ parent: $json.parent, properties: $json.properties }) }}",
         "options": {}
       },
       "id": "create-notion-page",
-      "name": "Create Notion Page",
+      "name": "14. Create Notion Page",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1540, 0],
+      "position": [3740, 300],
       "credentials": {
         "notionApi": {
           "id": "NOTION_CREDENTIAL_ID",
@@ -178,7 +435,7 @@
         "operation": "move",
         "fileId": {
           "__rl": true,
-          "value": "={{ $('Detect Type').first().json.id }}",
+          "value": "={{ $('1. Google Drive Trigger').first().json.id }}",
           "mode": "id"
         },
         "driveId": {
@@ -193,10 +450,10 @@
         }
       },
       "id": "move-to-processed",
-      "name": "Move to Processed",
+      "name": "15. Move to Processed",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [1760, 0],
+      "position": [3960, 300],
       "credentials": {
         "googleDriveOAuth2Api": {
           "id": "GOOGLE_DRIVE_CREDENTIAL_ID",
@@ -206,40 +463,10 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
-          "conditions": [
-            {
-              "id": "condition-error",
-              "leftValue": "={{ $json.error }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "exists",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "check-error",
-      "name": "Check for Errors",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [1760, 200]
-    },
-    {
-      "parameters": {
         "operation": "move",
         "fileId": {
           "__rl": true,
-          "value": "={{ $('Detect Type').first().json.id }}",
+          "value": "={{ $('1. Google Drive Trigger').first().json.id }}",
           "mode": "id"
         },
         "driveId": {
@@ -254,10 +481,10 @@
         }
       },
       "id": "move-to-error",
-      "name": "Move to Error Folder",
+      "name": "Error: Move to Error Folder",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [1980, 200],
+      "position": [3960, 600],
       "credentials": {
         "googleDriveOAuth2Api": {
           "id": "GOOGLE_DRIVE_CREDENTIAL_ID",
@@ -267,119 +494,292 @@
     }
   ],
   "connections": {
-    "Google Drive Trigger": {
+    "1. Google Drive Trigger": {
       "main": [
         [
           {
-            "node": "Detect Type",
+            "node": "2. Download Image",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Detect Type": {
+    "2. Download Image": {
       "main": [
         [
           {
-            "node": "Download from Drive",
+            "node": "3. Detect Barcode (Vision)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Download from Drive": {
+    "3. Detect Barcode (Vision)": {
       "main": [
         [
           {
-            "node": "OpenAI Vision",
+            "node": "4. Parse Barcode Result",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI Vision": {
+    "4. Parse Barcode Result": {
       "main": [
         [
           {
-            "node": "Parse OpenAI Response",
+            "node": "5. Has Barcode?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Parse OpenAI Response": {
+    "5. Has Barcode?": {
       "main": [
         [
           {
-            "node": "Upload to Cloudinary",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upload to Cloudinary": {
-      "main": [
-        [
-          {
-            "node": "Prepare Notion Data",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Prepare Notion Data": {
-      "main": [
-        [
-          {
-            "node": "Create Notion Page",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Create Notion Page": {
-      "main": [
-        [
-          {
-            "node": "Move to Processed",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Check for Errors",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check for Errors": {
-      "main": [
-        [
-          {
-            "node": "Move to Error Folder",
+            "node": "6a. Google Books API",
             "type": "main",
             "index": 0
           }
         ],
-        []
+        [
+          {
+            "node": "7a. Analyze Cover (Vision)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6a. Google Books API": {
+      "main": [
+        [
+          {
+            "node": "6b. Parse Google Books",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6b. Parse Google Books": {
+      "main": [
+        [
+          {
+            "node": "6c. Book Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6c. Book Found?": {
+      "main": [
+        [
+          {
+            "node": "6d. Open Library API (fallback)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "8. Merge All Branches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6d. Open Library API (fallback)": {
+      "main": [
+        [
+          {
+            "node": "6e. Parse Open Library",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6e. Parse Open Library": {
+      "main": [
+        [
+          {
+            "node": "8. Merge All Branches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7a. Analyze Cover (Vision)": {
+      "main": [
+        [
+          {
+            "node": "7b. Parse Cover Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7b. Parse Cover Analysis": {
+      "main": [
+        [
+          {
+            "node": "7c. Google Image Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7c. Google Image Search": {
+      "main": [
+        [
+          {
+            "node": "7d. Parse Image Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7d. Parse Image Search": {
+      "main": [
+        [
+          {
+            "node": "8. Merge All Branches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8. Merge All Branches": {
+      "main": [
+        [
+          {
+            "node": "9. Has Cover URL?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "9. Has Cover URL?": {
+      "main": [
+        [
+          {
+            "node": "10a. Download Cover from Web",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "10c. Use Original Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10a. Download Cover from Web": {
+      "main": [
+        [
+          {
+            "node": "10b. Prepare Web Cover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10b. Prepare Web Cover": {
+      "main": [
+        [
+          {
+            "node": "11. Merge Cover Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10c. Use Original Image": {
+      "main": [
+        [
+          {
+            "node": "11. Merge Cover Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11. Merge Cover Sources": {
+      "main": [
+        [
+          {
+            "node": "12. Upload to Cloudinary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12. Upload to Cloudinary": {
+      "main": [
+        [
+          {
+            "node": "13. Prepare Notion Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13. Prepare Notion Data": {
+      "main": [
+        [
+          {
+            "node": "14. Create Notion Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14. Create Notion Page": {
+      "main": [
+        [
+          {
+            "node": "15. Move to Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "errorWorkflow": "Error: Move to Error Folder"
   },
   "staticData": null,
   "tags": [
     {
       "name": "bibliotheque-jpg"
+    },
+    {
+      "name": "ingestion"
     }
   ],
   "triggerCount": 1,
@@ -399,6 +799,14 @@
     {
       "key": "NOTION_DATABASE_ID",
       "value": "YOUR_NOTION_DATABASE_ID"
+    },
+    {
+      "key": "GOOGLE_SEARCH_API_KEY",
+      "value": "YOUR_GOOGLE_CUSTOM_SEARCH_API_KEY"
+    },
+    {
+      "key": "GOOGLE_SEARCH_CX",
+      "value": "YOUR_GOOGLE_CUSTOM_SEARCH_ENGINE_ID"
     }
   ]
 }

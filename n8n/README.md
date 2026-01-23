@@ -4,30 +4,73 @@ Ce dossier contient les workflows n8n pour automatiser l'ingestion et le reporti
 
 ## Workflows
 
-### 1. Ingestion (`workflows/ingestion.json`)
+### 1. Ingestion v2 (`workflows/ingestion.json`)
 
-**Objectif:** Automatiser l'ajout d'items au catalogue depuis Google Drive.
+**Objectif:** Automatiser l'ajout d'items au catalogue avec détection intelligente.
 
-**Flux:**
+**Flux principal:**
 ```
-Google Drive (nouveau fichier)
-    ↓
-Detect Type (Code node)
-    ↓
-Download from Drive
-    ↓
-OpenAI Vision (GPT-4o)
-    ↓
-Parse Response (Code node)
-    ↓
-Upload to Cloudinary
-    ↓
-Create Notion Page
-    ↓
-Move to Processed/Error folder
+┌─────────────────────────────────────────────────────────────┐
+│  1. Google Drive Trigger (nouveau fichier)                  │
+│                         ↓                                   │
+│  2. Download Image                                          │
+│                         ↓                                   │
+│  3. Detect Barcode (GPT-4o Vision)                         │
+│                         ↓                                   │
+│  4. Parse Barcode Result                                    │
+│                         ↓                                   │
+│  5. Has Barcode? ─────────────────────────────────┐        │
+│         │                                          │        │
+│    [OUI - ISBN/EAN trouvé]                   [NON - Pas de code-barres]
+│         ↓                                          ↓        │
+│  ┌──────────────────────┐           ┌──────────────────────┐│
+│  │ 6a. Google Books API │           │ 7a. Analyze Cover    ││
+│  │         ↓            │           │     (GPT-4o Vision)  ││
+│  │ 6b. Parse Response   │           │         ↓            ││
+│  │         ↓            │           │ 7b. Parse Analysis   ││
+│  │ 6c. Book Found?      │           │         ↓            ││
+│  │    │        │        │           │ 7c. Google Image     ││
+│  │  [NON]    [OUI]      │           │     Search           ││
+│  │    ↓        │        │           │         ↓            ││
+│  │ 6d. Open   │        │           │ 7d. Parse Image URL  ││
+│  │   Library   │        │           └──────────────────────┘│
+│  │    ↓        │        │                    │              │
+│  │ 6e. Parse   │        │                    │              │
+│  └──────────────────────┘                    │              │
+│              │                               │              │
+│              └───────────────┬───────────────┘              │
+│                              ↓                              │
+│                    8. Merge All Branches                    │
+│                              ↓                              │
+│                    9. Has Cover URL?                        │
+│                         │        │                          │
+│                    [OUI]        [NON]                       │
+│                         ↓        ↓                          │
+│              10a. Download   10c. Use                       │
+│                  Cover       Original                       │
+│                         │        │                          │
+│                         └────┬───┘                          │
+│                              ↓                              │
+│                   11. Merge Cover Sources                   │
+│                              ↓                              │
+│                   12. Upload to Cloudinary                  │
+│                              ↓                              │
+│                   13. Prepare Notion Data                   │
+│                              ↓                              │
+│                   14. Create Notion Page                    │
+│                              ↓                              │
+│                   15. Move to Processed                     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Déclencheur:** Nouveau fichier dans le dossier Google Drive configuré
+**Logique:**
+1. **Photo avec code-barres visible** → Lecture ISBN → Google Books API → Open Library (fallback) → Télécharge couverture HD
+2. **Photo sans code-barres** → Analyse visuelle GPT-4o → Recherche Google Images → Télécharge couverture
+
+**APIs utilisées:**
+- **Google Books API** - Gratuit, pas de clé requise
+- **Open Library API** - Gratuit, pas de clé requise
+- **Google Custom Search API** - 100 requêtes/jour gratuites, puis payant
 
 ### 2. Daily Report (`workflows/daily-report.json`)
 
@@ -45,8 +88,6 @@ If has new items?
     ├── Yes → Generate HTML → Send Email
     └── No → Generate Empty Report → Send Email
 ```
-
-**Déclencheur:** Cron quotidien à 9h00
 
 ---
 
@@ -70,7 +111,9 @@ If has new items?
 3. Dans n8n: Credentials → Add → OpenAI API
 4. Coller la clé API
 
-**Note:** Assurez-vous d'avoir accès à GPT-4o Vision (gpt-4o)
+**Note:** Le workflow utilise GPT-4o Vision pour:
+- Détecter les codes-barres (ISBN/EAN)
+- Analyser les couvertures quand pas de code-barres
 
 ### 3. Cloudinary API
 
@@ -89,7 +132,26 @@ If has new items?
 5. Dans n8n: Credentials → Add → Notion API
 6. Coller le token
 
-### 5. SMTP (pour les emails)
+### 5. Google Custom Search API (pour recherche d'images)
+
+**Étape 1: Activer l'API**
+1. Aller sur [Google Cloud Console](https://console.cloud.google.com/)
+2. APIs & Services → Enable APIs
+3. Chercher "Custom Search API" et l'activer
+4. APIs & Services → Credentials → Create Credentials → API Key
+5. Copier la clé API
+
+**Étape 2: Créer un moteur de recherche personnalisé**
+1. Aller sur [Programmable Search Engine](https://programmablesearchengine.google.com/)
+2. Cliquer "Add" pour créer un nouveau moteur
+3. Dans "Sites to search", entrer `*.com` (recherche globale)
+4. Nommer le moteur "Bibliotheque JPG Images"
+5. Créer le moteur
+6. Aller dans "Overview" → Copier le "Search engine ID" (cx)
+
+**Coût:** 100 requêtes/jour gratuites, puis $5 pour 1000 requêtes
+
+### 6. SMTP (pour les emails)
 
 Option A: Gmail
 1. Activer l'authentification à 2 facteurs sur Gmail
@@ -116,6 +178,8 @@ Configurer ces variables dans n8n (Settings → Variables):
 | `DRIVE_PROCESSED_FOLDER_ID` | ID du dossier pour les images traitées | `1def...uvw` |
 | `DRIVE_ERROR_FOLDER_ID` | ID du dossier pour les erreurs | `1ghi...rst` |
 | `NOTION_DATABASE_ID` | ID de la database Notion | `abc123...` |
+| `GOOGLE_SEARCH_API_KEY` | Clé API Google Custom Search | `AIza...` |
+| `GOOGLE_SEARCH_CX` | ID du moteur de recherche personnalisé | `012345:abcdef` |
 | `NOTIFICATION_EMAIL` | Email pour recevoir les rapports | `kevin@example.com` |
 | `APP_URL` | URL de l'application déployée | `https://bibliotheque-jpg.vercel.app` |
 
@@ -133,29 +197,6 @@ Configurer ces variables dans n8n (Settings → Variables):
 
 ---
 
-## Importation des Workflows
-
-### Méthode 1: Interface n8n
-
-1. Ouvrir n8n: `https://n8n.srv859352.hstgr.cloud`
-2. Workflows → Import from File
-3. Sélectionner `ingestion.json` ou `daily-report.json`
-4. Remplacer les placeholders de credentials:
-   - `GOOGLE_DRIVE_CREDENTIAL_ID` → ID de votre credential Google Drive
-   - `OPENAI_CREDENTIAL_ID` → ID de votre credential OpenAI
-   - `CLOUDINARY_CREDENTIAL_ID` → ID de votre credential Cloudinary
-   - `NOTION_CREDENTIAL_ID` → ID de votre credential Notion
-   - `SMTP_CREDENTIAL_ID` → ID de votre credential SMTP
-
-### Méthode 2: API n8n
-
-```bash
-# Avec le MCP n8n-server configuré, demander à Claude:
-"Importe le workflow ingestion.json dans mon instance n8n"
-```
-
----
-
 ## Structure des dossiers Google Drive
 
 Créer cette structure:
@@ -170,16 +211,28 @@ Créer cette structure:
 
 ## Test des Workflows
 
-### Test Ingestion
+### Test Ingestion - Scénario 1: Livre avec code-barres
 
 1. Activer le workflow
-2. Déposer une image de livre/CD/vinyle dans le dossier Inbox
+2. Prendre une photo du **dos d'un livre** (code-barres visible)
+3. Déposer l'image dans le dossier Inbox
+4. Vérifier:
+   - [ ] Code-barres détecté par GPT-4o
+   - [ ] Informations récupérées depuis Google Books
+   - [ ] Couverture HD téléchargée depuis le web
+   - [ ] Image uploadée sur Cloudinary
+   - [ ] Page créée dans Notion avec toutes les infos
+
+### Test Ingestion - Scénario 2: Livre sans code-barres
+
+1. Prendre une photo de la **couverture d'un livre** (pas de code-barres)
+2. Déposer l'image dans le dossier Inbox
 3. Vérifier:
-   - [ ] Le fichier est téléchargé
-   - [ ] OpenAI analyse l'image
-   - [ ] L'image est uploadée sur Cloudinary
-   - [ ] Une page est créée dans Notion
-   - [ ] Le fichier est déplacé vers Processed
+   - [ ] GPT-4o analyse la couverture
+   - [ ] Titre et auteur extraits
+   - [ ] Recherche Google Images lancée
+   - [ ] Meilleure couverture téléchargée (ou original utilisé)
+   - [ ] Page créée dans Notion
 
 ### Test Daily Report
 
@@ -193,6 +246,21 @@ Créer cette structure:
 ---
 
 ## Troubleshooting
+
+### "Barcode not detected"
+- Assurez-vous que le code-barres est bien visible et net
+- Essayez avec une meilleure luminosité
+- Le workflow passera automatiquement en mode "analyse visuelle"
+
+### "Google Books API returns no results"
+- L'ISBN peut être incorrect ou non répertorié
+- Le workflow essaiera automatiquement Open Library
+- Si les deux échouent, l'image originale sera utilisée
+
+### "Google Image Search failed"
+- Vérifiez la clé API et le CX
+- Vérifiez le quota (100/jour gratuit)
+- Le workflow utilisera l'image originale en fallback
 
 ### "Google Drive trigger not firing"
 - Vérifier que le workflow est activé
@@ -217,6 +285,24 @@ Créer cette structure:
 - Vérifier les credentials SMTP
 - Pour Gmail: vérifier le mot de passe d'application
 - Vérifier que l'email destinataire est valide
+
+---
+
+## Coûts estimés
+
+| Service | Gratuit | Payant |
+|---------|---------|--------|
+| Google Books API | Illimité | - |
+| Open Library API | Illimité | - |
+| Google Custom Search | 100/jour | $5/1000 req |
+| OpenAI GPT-4o | - | ~$0.01/image |
+| Cloudinary | 25 crédits/mois | Variable |
+| n8n | Self-hosted | - |
+
+**Estimation pour 2000 items:**
+- OpenAI: ~$20-40 (selon le nombre d'appels par item)
+- Google Search: ~$10-20 (si dépassement quota)
+- Cloudinary: Inclus dans le plan gratuit
 
 ---
 
