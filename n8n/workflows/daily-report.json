@@ -1,0 +1,251 @@
+{
+  "name": "Bibliotheque JPG - Daily Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Daily at 9 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/{{ $vars.NOTION_DATABASE_ID }}/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"filter\": {\n    \"property\": \"Date_Ajout\",\n    \"date\": {\n      \"past_week\": {}\n    }\n  },\n  \"sorts\": [\n    {\n      \"property\": \"Date_Ajout\",\n      \"direction\": \"descending\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "query-notion",
+      "name": "Query Recent Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [220, 0],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter items added in the last 24 hours and compute stats\nconst results = $input.first().json.results || [];\nconst now = new Date();\nconst yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);\n\n// Filter last 24h items\nconst recentItems = results.filter(page => {\n  const dateAdded = page.properties.Date_Ajout?.date?.start;\n  if (!dateAdded) return false;\n  return new Date(dateAdded) >= yesterday;\n});\n\n// Parse items for display\nconst parsedItems = recentItems.map(page => {\n  const props = page.properties;\n  return {\n    titre: props.Titre?.title?.[0]?.text?.content || 'Sans titre',\n    auteur: props.Auteur_Artiste?.rich_text?.[0]?.text?.content || '-',\n    type: props.Type?.select?.name || '-',\n    etat: props.Etat?.select?.name || '-'\n  };\n});\n\n// Compute stats by type\nconst stats = {\n  total: recentItems.length,\n  livres: recentItems.filter(p => p.properties.Type?.select?.name === 'Livre').length,\n  cds: recentItems.filter(p => p.properties.Type?.select?.name === 'CD').length,\n  vinyles: recentItems.filter(p => p.properties.Type?.select?.name === 'Vinyle').length\n};\n\n// Also get all-time stats from all results\nconst allTimeStats = {\n  total: results.length,\n  livres: results.filter(p => p.properties.Type?.select?.name === 'Livre').length,\n  cds: results.filter(p => p.properties.Type?.select?.name === 'CD').length,\n  vinyles: results.filter(p => p.properties.Type?.select?.name === 'Vinyle').length\n};\n\nreturn {\n  json: {\n    hasNewItems: recentItems.length > 0,\n    items: parsedItems,\n    stats: stats,\n    allTimeStats: allTimeStats,\n    date: now.toLocaleDateString('fr-FR', { \n      weekday: 'long', \n      year: 'numeric', \n      month: 'long', \n      day: 'numeric' \n    })\n  }\n};"
+      },
+      "id": "process-data",
+      "name": "Process Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-items",
+              "leftValue": "={{ $json.hasNewItems }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-new-items",
+      "name": "Has New Items?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate HTML email with items\nconst data = $input.first().json;\n\nconst itemRows = data.items.map(item => `\n  <tr>\n    <td style=\"padding: 8px; border-bottom: 1px solid #eee;\">${item.titre}</td>\n    <td style=\"padding: 8px; border-bottom: 1px solid #eee;\">${item.auteur}</td>\n    <td style=\"padding: 8px; border-bottom: 1px solid #eee;\">${item.type}</td>\n    <td style=\"padding: 8px; border-bottom: 1px solid #eee;\">${item.etat}</td>\n  </tr>\n`).join('');\n\nconst html = `\n<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { background: #f97316; color: white; padding: 20px; border-radius: 8px 8px 0 0; }\n    .content { background: #fff; padding: 20px; border: 1px solid #eee; }\n    .stats { display: flex; gap: 10px; margin: 20px 0; }\n    .stat-box { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; flex: 1; }\n    .stat-number { font-size: 24px; font-weight: bold; color: #f97316; }\n    .stat-label { font-size: 12px; color: #666; }\n    table { width: 100%; border-collapse: collapse; margin-top: 20px; }\n    th { background: #f8f9fa; padding: 10px; text-align: left; }\n    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1 style=\"margin: 0;\">📚 Bibliothèque JPG</h1>\n      <p style=\"margin: 5px 0 0 0;\">Rapport quotidien - ${data.date}</p>\n    </div>\n    <div class=\"content\">\n      <h2>Nouveaux items (24h)</h2>\n      <div class=\"stats\">\n        <div class=\"stat-box\">\n          <div class=\"stat-number\">${data.stats.total}</div>\n          <div class=\"stat-label\">Total</div>\n        </div>\n        <div class=\"stat-box\">\n          <div class=\"stat-number\">${data.stats.livres}</div>\n          <div class=\"stat-label\">Livres</div>\n        </div>\n        <div class=\"stat-box\">\n          <div class=\"stat-number\">${data.stats.cds}</div>\n          <div class=\"stat-label\">CDs</div>\n        </div>\n        <div class=\"stat-box\">\n          <div class=\"stat-number\">${data.stats.vinyles}</div>\n          <div class=\"stat-label\">Vinyles</div>\n        </div>\n      </div>\n      \n      <table>\n        <thead>\n          <tr>\n            <th>Titre</th>\n            <th>Auteur/Artiste</th>\n            <th>Type</th>\n            <th>État</th>\n          </tr>\n        </thead>\n        <tbody>\n          ${itemRows}\n        </tbody>\n      </table>\n      \n      <h3 style=\"margin-top: 30px;\">Statistiques globales</h3>\n      <p>Total catalogué: <strong>${data.allTimeStats.total}</strong> items (${data.allTimeStats.livres} livres, ${data.allTimeStats.cds} CDs, ${data.allTimeStats.vinyles} vinyles)</p>\n    </div>\n    <div class=\"footer\">\n      <p>Ce rapport est généré automatiquement par n8n.</p>\n      <p>Accédez à la galerie: <a href=\"${ $vars.APP_URL }/gallery\">Bibliothèque JPG</a></p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn {\n  json: {\n    subject: `📚 Bibliothèque JPG - ${data.stats.total} nouveaux items - ${data.date}`,\n    html: html\n  }\n};"
+      },
+      "id": "generate-email-html",
+      "name": "Generate Email HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, -100]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.NOTIFICATION_EMAIL }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1100, -100],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// No new items - generate simple notification\nconst data = $input.first().json;\n\nreturn {\n  json: {\n    subject: `📚 Bibliothèque JPG - Aucun nouvel item - ${data.date}`,\n    html: `\n      <div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n        <h1 style=\"color: #f97316;\">📚 Bibliothèque JPG</h1>\n        <p>Aucun nouvel item n'a été ajouté au catalogue dans les dernières 24 heures.</p>\n        <p><strong>Statistiques globales:</strong> ${data.allTimeStats.total} items catalogués</p>\n        <p style=\"color: #666; font-size: 12px; margin-top: 30px;\">Ce rapport est généré automatiquement par n8n.</p>\n      </div>\n    `\n  }\n};"
+      },
+      "id": "generate-empty-email",
+      "name": "Generate Empty Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 100]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.NOTIFICATION_EMAIL }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send-empty-email",
+      "name": "Send Empty Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1100, 100],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily at 9 AM": {
+      "main": [
+        [
+          {
+            "node": "Query Recent Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Recent Items": {
+      "main": [
+        [
+          {
+            "node": "Process Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Data": {
+      "main": [
+        [
+          {
+            "node": "Has New Items?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has New Items?": {
+      "main": [
+        [
+          {
+            "node": "Generate Email HTML",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Empty Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Email HTML": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Empty Report": {
+      "main": [
+        [
+          {
+            "node": "Send Empty Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "bibliotheque-jpg"
+    }
+  ],
+  "triggerCount": 1,
+  "variables": [
+    {
+      "key": "NOTION_DATABASE_ID",
+      "value": "YOUR_NOTION_DATABASE_ID"
+    },
+    {
+      "key": "NOTIFICATION_EMAIL",
+      "value": "your-email@example.com"
+    },
+    {
+      "key": "APP_URL",
+      "value": "https://bibliotheque-jpg.vercel.app"
+    }
+  ]
+}

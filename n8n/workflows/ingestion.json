@@ -1,0 +1,404 @@
+{
+  "name": "Bibliotheque JPG - Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "={{ $vars.DRIVE_FOLDER_ID }}",
+          "mode": "id"
+        },
+        "event": "fileCreated",
+        "options": {}
+      },
+      "id": "trigger-drive",
+      "name": "Google Drive Trigger",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Detect item type from filename\nconst filename = $input.first().json.name.toLowerCase();\n\nlet type = 'Livre'; // Default\nlet extension = filename.split('.').pop();\n\n// Music-related keywords\nconst musicKeywords = ['cd', 'album', 'musique', 'music', 'audio'];\nconst vinylKeywords = ['vinyle', 'vinyl', '33t', '45t', 'lp'];\n\nif (musicKeywords.some(k => filename.includes(k))) {\n  type = 'CD';\n} else if (vinylKeywords.some(k => filename.includes(k))) {\n  type = 'Vinyle';\n}\n\nreturn {\n  json: {\n    ...$input.first().json,\n    detected_type: type,\n    file_extension: extension\n  }\n};"
+      },
+      "id": "detect-type",
+      "name": "Detect Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "download-file",
+      "name": "Download from Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [440, 0],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "options": {},
+        "requestOptions": {},
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Tu es un assistant qui analyse des photos d'objets culturels (livres, CDs, vinyles) pour une bibliothèque familiale. Extrais les informations suivantes au format JSON strict:\n{\n  \"titre\": \"Le titre principal\",\n  \"auteur_artiste\": \"Auteur ou artiste\",\n  \"annee\": 2000,\n  \"etat\": \"Neuf|Très bon|Bon|Acceptable|Mauvais\",\n  \"tags\": [\"tag1\", \"tag2\"],\n  \"description\": \"Brève description si visible\"\n}\n\nRègles:\n- Si une info n'est pas visible, utilise null\n- L'année doit être un nombre ou null\n- L'état est une estimation basée sur l'apparence\n- Les tags peuvent inclure: genre, collection, éditeur, etc.\n- Réponds UNIQUEMENT avec le JSON, pas de texte avant/après"
+            },
+            {
+              "role": "user",
+              "type": "image",
+              "image": "={{ $binary.data.data }}",
+              "content": "Analyse cette image et extrais les métadonnées de l'objet."
+            }
+          ]
+        },
+        "model": "gpt-4o",
+        "temperature": 0.3,
+        "maxTokens": 500
+      },
+      "id": "openai-vision",
+      "name": "OpenAI Vision",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [660, 0],
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI response and merge with detected type\nconst response = $input.first().json.message.content;\nconst previousData = $('Detect Type').first().json;\n\nlet parsed;\ntry {\n  // Clean the response in case there's markdown code blocks\n  let cleanResponse = response.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleanResponse);\n} catch (e) {\n  // If parsing fails, create minimal object\n  parsed = {\n    titre: previousData.name.replace(/\\.[^.]+$/, ''),\n    auteur_artiste: null,\n    annee: null,\n    etat: 'Bon',\n    tags: [],\n    description: null\n  };\n}\n\nreturn {\n  json: {\n    file_id: previousData.id,\n    file_name: previousData.name,\n    type: previousData.detected_type,\n    titre: parsed.titre || previousData.name.replace(/\\.[^.]+$/, ''),\n    auteur_artiste: parsed.auteur_artiste || '',\n    annee: parsed.annee,\n    etat: parsed.etat || 'Bon',\n    tags: parsed.tags || [],\n    description: parsed.description || ''\n  },\n  binary: $input.first().binary\n};"
+      },
+      "id": "parse-response",
+      "name": "Parse OpenAI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "resource": "image",
+        "binaryPropertyName": "data",
+        "options": {
+          "folder": "bibliotheque-jpg",
+          "publicId": "={{ $json.file_id }}",
+          "resourceType": "image"
+        }
+      },
+      "id": "cloudinary-upload",
+      "name": "Upload to Cloudinary",
+      "type": "n8n-nodes-base.cloudinary",
+      "typeVersion": 1,
+      "position": [1100, 0],
+      "credentials": {
+        "cloudinaryApi": {
+          "id": "CLOUDINARY_CREDENTIAL_ID",
+          "name": "Cloudinary"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Notion page properties\nconst data = $('Parse OpenAI Response').first().json;\nconst cloudinaryUrl = $input.first().json.secure_url;\n\nreturn {\n  json: {\n    parent: {\n      database_id: $vars.NOTION_DATABASE_ID\n    },\n    properties: {\n      \"Titre\": {\n        \"title\": [\n          {\n            \"text\": {\n              \"content\": data.titre || 'Sans titre'\n            }\n          }\n        ]\n      },\n      \"Auteur_Artiste\": {\n        \"rich_text\": [\n          {\n            \"text\": {\n              \"content\": data.auteur_artiste || ''\n            }\n          }\n        ]\n      },\n      \"Type\": {\n        \"select\": {\n          \"name\": data.type\n        }\n      },\n      \"Etat\": {\n        \"select\": {\n          \"name\": data.etat\n        }\n      },\n      \"Status_Dispo\": {\n        \"status\": {\n          \"name\": \"Disponible\"\n        }\n      },\n      \"Status_Vente\": {\n        \"select\": {\n          \"name\": \"A donner\"\n        }\n      },\n      \"Image_URL\": {\n        \"url\": cloudinaryUrl\n      },\n      \"Tags\": {\n        \"multi_select\": data.tags.map(tag => ({ name: tag }))\n      },\n      \"Annee\": data.annee ? {\n        \"number\": data.annee\n      } : { \"number\": null },\n      \"Date_Ajout\": {\n        \"date\": {\n          \"start\": new Date().toISOString().split('T')[0]\n        }\n      },\n      \"Source_File\": {\n        \"rich_text\": [\n          {\n            \"text\": {\n              \"content\": data.file_name\n            }\n          }\n        ]\n      }\n    }\n  }\n};"
+      },
+      "id": "prepare-notion",
+      "name": "Prepare Notion Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "create-notion-page",
+      "name": "Create Notion Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1540, 0],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Detect Type').first().json.id }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "value": "myDrive",
+          "mode": "list"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $vars.DRIVE_PROCESSED_FOLDER_ID }}",
+          "mode": "id"
+        }
+      },
+      "id": "move-to-processed",
+      "name": "Move to Processed",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1760, 0],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-error",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-error",
+      "name": "Check for Errors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1760, 200]
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Detect Type').first().json.id }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "value": "myDrive",
+          "mode": "list"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $vars.DRIVE_ERROR_FOLDER_ID }}",
+          "mode": "id"
+        }
+      },
+      "id": "move-to-error",
+      "name": "Move to Error Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1980, 200],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Detect Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Type": {
+      "main": [
+        [
+          {
+            "node": "Download from Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download from Drive": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Vision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Vision": {
+      "main": [
+        [
+          {
+            "node": "Parse OpenAI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OpenAI Response": {
+      "main": [
+        [
+          {
+            "node": "Upload to Cloudinary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Cloudinary": {
+      "main": [
+        [
+          {
+            "node": "Prepare Notion Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Notion Data": {
+      "main": [
+        [
+          {
+            "node": "Create Notion Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Notion Page": {
+      "main": [
+        [
+          {
+            "node": "Move to Processed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check for Errors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Errors": {
+      "main": [
+        [
+          {
+            "node": "Move to Error Folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "bibliotheque-jpg"
+    }
+  ],
+  "triggerCount": 1,
+  "variables": [
+    {
+      "key": "DRIVE_FOLDER_ID",
+      "value": "YOUR_GOOGLE_DRIVE_INBOX_FOLDER_ID"
+    },
+    {
+      "key": "DRIVE_PROCESSED_FOLDER_ID",
+      "value": "YOUR_GOOGLE_DRIVE_PROCESSED_FOLDER_ID"
+    },
+    {
+      "key": "DRIVE_ERROR_FOLDER_ID",
+      "value": "YOUR_GOOGLE_DRIVE_ERROR_FOLDER_ID"
+    },
+    {
+      "key": "NOTION_DATABASE_ID",
+      "value": "YOUR_NOTION_DATABASE_ID"
+    }
+  ]
+}
