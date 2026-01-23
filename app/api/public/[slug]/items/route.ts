@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { validateAssociationSlug } from '@/lib/auth';
+import { validateAssociationSlug, getAssociationName } from '@/lib/auth';
 import { getAssociationItems } from '@/lib/notion';
 import { InvalidSlugError } from '@/types';
 
@@ -33,10 +33,13 @@ export async function GET(
       throw error;
     }
 
+    // Get association name
+    const associationName = getAssociationName(slug);
+
     // Get items for association (only available items)
     const items = await getAssociationItems();
 
-    return NextResponse.json({ items }, { status: 200 });
+    return NextResponse.json({ items, associationName }, { status: 200 });
   } catch (error) {
     console.error('Association items error:', error);
 
