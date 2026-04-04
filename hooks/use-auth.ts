@@ -52,5 +52,5 @@ export function useAuth() {
     window.location.href = "/";
   };
 
-  return { ...state, login, logout };
-}
+  return { ...state, login, logout, check };
+} 

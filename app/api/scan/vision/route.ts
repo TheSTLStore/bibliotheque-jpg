@@ -29,7 +29,16 @@ export async function POST(request: NextRequest) {
 
   const { data: { publicUrl } } = supabase.storage.from("item-images").getPublicUrl(fileName);
 
-  const result = await analyzeImage(image);
+  let result = null;
+  try {
+    result = await analyzeImage(image);
+  } catch (err) {
+    console.error("Gemini API error:", err);
+    return NextResponse.json(
+      { error: "Erreur lors de l'analyse IA. Vérifiez votre clé Gemini.", image_url: publicUrl },
+      { status: 422 }
+    );
+  }
 
   if (!result) {
     return NextResponse.json(

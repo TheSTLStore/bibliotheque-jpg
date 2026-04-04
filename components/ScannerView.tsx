@@ -45,7 +45,7 @@ export function ScannerView({ onBarcodeDetected, onPhotoCapture }: ScannerViewPr
         </div>
       ) : (
         <div className="relative">
-          <video ref={videoRef as React.RefObject<HTMLVideoElement>} className="w-full rounded-lg" playsInline muted />
+          <video ref={videoRef as React.RefObject<HTMLVideoElement>} className="w-full rounded-lg" autoPlay playsInline muted />
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-64 h-40 border-2 border-accent rounded-lg opacity-50" />
           </div>

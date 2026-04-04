@@ -32,16 +32,27 @@ export function useBarcodeScanner(): UseBarcodeScanner {
       setError(null);
       setBarcode(null);
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+        video: { facingMode: { ideal: "environment" } },
       });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        try {
+          await videoRef.current.play();
+        } catch {
+          // autoplay attribute should handle it on mobile
+        }
       }
       setIsActive(true);
-    } catch {
-      setError("Impossible d'accéder à la caméra");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      if (msg.includes("NotAllowedError") || msg.includes("Permission")) {
+        setError("Accès caméra refusé. Autorisez la caméra dans les paramètres du navigateur.");
+      } else if (msg.includes("NotFoundError")) {
+        setError("Aucune caméra détectée sur cet appareil.");
+      } else {
+        setError("Impossible d'accéder à la caméra : " + msg);
+      }
     }
   }, []);
 
