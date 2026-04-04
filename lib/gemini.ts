@@ -18,20 +18,15 @@ Si tu ne peux pas identifier un champ, mets null.
 Ne retourne rien d'autre que le JSON.`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
     contents: [
       {
-        role: "user",
-        parts: [
-          { text: prompt },
-          {
-            inlineData: {
-              mimeType: "image/jpeg",
-              data: imageBase64,
-            },
-          },
-        ],
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: imageBase64,
+        },
       },
+      { text: prompt },
     ],
   });
 

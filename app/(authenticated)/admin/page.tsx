@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
 import { AdminReservationTable } from "@/components/AdminReservationTable";
 import { Download, BarChart3, Users } from "lucide-react";
 
@@ -22,10 +21,7 @@ export default function AdminPageWrapper() {
 }
 
 function AdminPage() {
-  const searchParams = useSearchParams();
-  const showLogin = searchParams.get("login") === "true";
-
-  const [adminAuth, setAdminAuth] = useState(!showLogin);
+  const [adminAuth, setAdminAuth] = useState(false);
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);

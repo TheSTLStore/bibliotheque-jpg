@@ -49,6 +49,7 @@ export function useAuth() {
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     setState({ authenticated: false, prenom: null, loading: false });
+    window.location.href = "/";
   };
 
   return { ...state, login, logout };
