@@ -16,6 +16,8 @@ export interface Item {
   annee: number | null;
   image_url: string | null;
   localisation: string | null;
+  visible: boolean;
+  valeur_estimee: number | null;
   status: ItemStatus;
   created_at: string;
   updated_at: string;
@@ -54,4 +56,10 @@ export interface VisionResult {
   type: ItemType;
   categorie: string | null;
   annee: number | null;
+}
+
+export interface EnrichResult {
+  categorie: string | null;
+  tags: string[];
+  valeur_estimee: number | null;
 }

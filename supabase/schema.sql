@@ -69,3 +69,7 @@ CREATE INDEX idx_sessions_token ON sessions(token);
 
 -- Supabase Storage bucket (run this in Supabase dashboard SQL editor)
 -- INSERT INTO storage.buckets (id, name, public) VALUES ('item-images', 'item-images', true);
+
+-- V2.1: Visibility and price estimation
+ALTER TABLE items ADD COLUMN visible BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE items ADD COLUMN valeur_estimee DECIMAL;
