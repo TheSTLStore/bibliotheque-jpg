@@ -35,14 +35,7 @@ export function useBarcodeScanner(): UseBarcodeScanner {
         video: { facingMode: { ideal: "environment" } },
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        try {
-          await videoRef.current.play();
-        } catch {
-          // autoplay attribute should handle it on mobile
-        }
-      }
+      // Set isActive FIRST so the <video> element renders
       setIsActive(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur inconnue";
@@ -60,6 +53,16 @@ export function useBarcodeScanner(): UseBarcodeScanner {
     setBarcode(null);
     setError(null);
   }, []);
+
+  // Attach stream to video element once both are available
+  useEffect(() => {
+    if (isActive && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {
+        // autoplay attribute handles it on mobile
+      });
+    }
+  }, [isActive]);
 
   useEffect(() => {
     if (!isActive || barcode) return;
