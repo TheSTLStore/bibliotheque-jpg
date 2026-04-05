@@ -26,6 +26,7 @@ export async function GET(
       reservations (id, prenom, created_at)
     `)
     .eq("status", "Disponible")
+    .eq("visible", true)
     .order("created_at", { ascending: false });
 
   if (type) query = query.eq("type", type);

@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
       *,
       reservations (id, prenom, created_at)
     `)
+    .eq("visible", true)
     .order("created_at", { ascending: false });
 
   if (type) query = query.eq("type", type);
@@ -26,9 +27,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Strip localisation from public response
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const items = (data || []).map(({ localisation, ...item }: Record<string, unknown>) => item);
+  const items = (data || []).map(({ localisation, visible, valeur_estimee, ...item }: Record<string, unknown>) => item);
 
   return NextResponse.json(items);
 }
@@ -50,6 +50,8 @@ export async function POST(request: NextRequest) {
       annee: body.annee || null,
       image_url: body.image_url || null,
       localisation: body.localisation || null,
+      valeur_estimee: body.valeur_estimee || null,
+      visible: false,
       status: "Disponible",
     })
     .select()
