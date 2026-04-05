@@ -168,27 +168,9 @@ sessions: id, prenom, token (UNIQUE), created_at, expires_at
 ## Variables d'environnement
 
 ```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://REDACTED.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-SUPABASE_SERVICE_ROLE_KEY=...
-
-# Auth
-FAMILY_PASSWORD=REDACTED
-ADMIN_PASSWORD=REDACTED
-
-# Associations
-ASSOCIATION_SLUGS=mediatheque-orgelet:Mediatheque Orgelet,biblio-lons:Bibliotheque Lons
-
-# APIs
-GEMINI_API_KEY=REDACTED
-GEMINI_MODEL=gemini-2.5-flash
-GOOGLE_BOOKS_API_KEY=REDACTED
-DISCOGS_TOKEN=REDACTED
-
-# eBay (optionnel)
-EBAY_APP_ID=
-EBAY_CERT_ID=
+# Voir .env.example pour la liste des variables.
+# Les valeurs reelles sont dans .env.local (gitignored) et dans Vercel Environment Variables.
+# NE JAMAIS mettre de vraies cles ici — ce fichier est sur un repo public.
 ```
 
 ## Bugs rencontres et solutions
