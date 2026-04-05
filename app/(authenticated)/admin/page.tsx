@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminReservationTable } from "@/components/AdminReservationTable";
-import { Download, BarChart3, Users } from "lucide-react";
+import { AdminItemsTab } from "@/components/AdminItemsTab";
+import { Download, BarChart3, Users, Package, BookOpen } from "lucide-react";
 
 interface Stats {
   totalItems: number;
@@ -26,7 +28,7 @@ function AdminPage() {
   const [authError, setAuthError] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [reservations, setReservations] = useState<any[]>([] as any[]);
+  const [reservations, setReservations] = useState<any[]>([]);
   const [selectedPrenom, setSelectedPrenom] = useState<string>("");
 
   async function handleAdminLogin(e: React.FormEvent) {
@@ -62,10 +64,8 @@ function AdminPage() {
   }, [adminAuth]);
 
   useEffect(() => {
-    if (adminAuth && selectedPrenom) {
-      fetchReservations(selectedPrenom);
-    } else if (adminAuth) {
-      fetchReservations();
+    if (adminAuth) {
+      fetchReservations(selectedPrenom || undefined);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPrenom]);
@@ -89,46 +89,62 @@ function AdminPage() {
     <div className="px-4 py-4 max-w-6xl mx-auto">
       <h1 className="text-xl font-bold text-accent mb-6">Panel Admin</h1>
 
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <div className="card text-center">
-            <BarChart3 size={20} className="text-accent mx-auto mb-1" />
-            <div className="text-2xl font-bold text-text-primary">{stats.totalItems}</div>
-            <div className="text-xs text-text-secondary">Total objets</div>
-          </div>
-          <div className="card text-center">
-            <div className="text-lg font-bold text-text-primary">{stats.byType.Livre} / {stats.byType.CD} / {stats.byType.Vinyle}</div>
-            <div className="text-xs text-text-secondary">Livres / CDs / Vinyles</div>
-          </div>
-          <div className="card text-center">
-            <Users size={20} className="text-accent mx-auto mb-1" />
-            <div className="text-2xl font-bold text-text-primary">{stats.totalReservations}</div>
-            <div className="text-xs text-text-secondary">Réservations</div>
-          </div>
-          <div className="card text-center">
-            <div className="text-2xl font-bold text-text-primary">{stats.byStatus.Disponible}</div>
-            <div className="text-xs text-text-secondary">Disponibles</div>
-          </div>
-        </div>
-      )}
+      <Tabs defaultValue="stats" className="w-full">
+        <TabsList className="bg-background-light border border-border mb-6">
+          <TabsTrigger value="stats" className="data-[state=active]:bg-accent data-[state=active]:text-background flex items-center gap-1">
+            <BarChart3 size={14} /> Stats
+          </TabsTrigger>
+          <TabsTrigger value="articles" className="data-[state=active]:bg-accent data-[state=active]:text-background flex items-center gap-1">
+            <Package size={14} /> Articles
+          </TabsTrigger>
+          <TabsTrigger value="reservations" className="data-[state=active]:bg-accent data-[state=active]:text-background flex items-center gap-1">
+            <BookOpen size={14} /> Réservations
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="flex flex-wrap gap-3 items-center mb-4">
-        <select value={selectedPrenom} onChange={(e) => setSelectedPrenom(e.target.value)} className="input-field">
-          <option value="">Toutes les réservations</option>
-          {stats?.uniqueReservers.map((p) => (<option key={p} value={p}>{p}</option>))}
-        </select>
+        <TabsContent value="stats">
+          {stats && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="card text-center">
+                <BarChart3 size={20} className="text-accent mx-auto mb-1" />
+                <div className="text-2xl font-bold text-text-primary">{stats.totalItems}</div>
+                <div className="text-xs text-text-secondary">Total objets</div>
+              </div>
+              <div className="card text-center">
+                <div className="text-lg font-bold text-text-primary">{stats.byType.Livre} / {stats.byType.CD} / {stats.byType.Vinyle}</div>
+                <div className="text-xs text-text-secondary">Livres / CDs / Vinyles</div>
+              </div>
+              <div className="card text-center">
+                <Users size={20} className="text-accent mx-auto mb-1" />
+                <div className="text-2xl font-bold text-text-primary">{stats.totalReservations}</div>
+                <div className="text-xs text-text-secondary">Réservations</div>
+              </div>
+              <div className="card text-center">
+                <div className="text-2xl font-bold text-text-primary">{stats.byStatus.Disponible}</div>
+                <div className="text-xs text-text-secondary">Disponibles</div>
+              </div>
+            </div>
+          )}
+        </TabsContent>
 
-        <a
-          href={selectedPrenom ? `/api/admin/export?prenom=${encodeURIComponent(selectedPrenom)}` : "/api/admin/export"}
-          className="btn-primary flex items-center gap-2 text-sm"
-          download
-        >
-          <Download size={14} />
-          Export CSV {selectedPrenom ? `(${selectedPrenom})` : "(global)"}
-        </a>
-      </div>
+        <TabsContent value="articles">
+          <AdminItemsTab />
+        </TabsContent>
 
-      <AdminReservationTable reservations={reservations} />
+        <TabsContent value="reservations">
+          <div className="flex flex-wrap gap-3 items-center mb-4">
+            <select value={selectedPrenom} onChange={(e) => setSelectedPrenom(e.target.value)} className="input-field">
+              <option value="">Toutes les réservations</option>
+              {stats?.uniqueReservers.map((p) => (<option key={p} value={p}>{p}</option>))}
+            </select>
+            <a href={selectedPrenom ? `/api/admin/export?prenom=${encodeURIComponent(selectedPrenom)}` : "/api/admin/export"} className="btn-primary flex items-center gap-2 text-sm" download>
+              <Download size={14} />
+              Export CSV {selectedPrenom ? `(${selectedPrenom})` : "(global)"}
+            </a>
+          </div>
+          <AdminReservationTable reservations={reservations} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
