@@ -31,24 +31,33 @@ async function reuploadImage(imageUrl: string): Promise<string | null> {
 }
 
 export async function POST(request: NextRequest) {
-  const { isbn, type } = await request.json();
+  const { isbn } = await request.json();
 
   if (!isbn) {
     return NextResponse.json({ error: "Code-barre requis" }, { status: 400 });
   }
 
+  // Try both APIs in parallel to detect the right type
+  const [booksResult, discogsResult] = await Promise.all([
+    lookupGoogleBooks(isbn),
+    lookupDiscogs(isbn),
+  ]);
+
   let result = null;
+  let detectedType: "Livre" | "CD" | "Vinyle" = "Livre";
 
-  if (type === "Livre" || !type) {
-    result = await lookupGoogleBooks(isbn);
-  }
-
-  if (!result && (type === "CD" || type === "Vinyle" || !type)) {
-    result = await lookupDiscogs(isbn);
-  }
-
-  if (!result && type === "Livre") {
-    result = await lookupDiscogs(isbn);
+  if (discogsResult && booksResult) {
+    // Both found — Discogs is more specific for music, prefer it for type detection
+    result = discogsResult;
+    detectedType = discogsResult.format;
+  } else if (discogsResult) {
+    // Only Discogs found it — it's music
+    result = discogsResult;
+    detectedType = discogsResult.format;
+  } else if (booksResult) {
+    // Only Google Books found it — it's a book
+    result = booksResult;
+    detectedType = "Livre";
   }
 
   if (!result) {
@@ -59,14 +68,15 @@ export async function POST(request: NextRequest) {
   }
 
   // Re-upload external image to Supabase Storage
-  if (result.image_url) {
-    const supabaseUrl = await reuploadImage(result.image_url);
-    if (supabaseUrl) {
-      result = { ...result, image_url: supabaseUrl };
-    } else {
-      result = { ...result, image_url: null };
-    }
+  let imageUrl = result.image_url;
+  if (imageUrl) {
+    const supabaseUrl = await reuploadImage(imageUrl);
+    imageUrl = supabaseUrl;
   }
 
-  return NextResponse.json(result);
+  return NextResponse.json({
+    ...result,
+    image_url: imageUrl,
+    type: detectedType,
+  });
 }
