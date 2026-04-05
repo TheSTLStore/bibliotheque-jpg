@@ -1,13 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Image from "next/image";
+import { Camera } from "lucide-react";
 import { ItemType, ItemEtat } from "@/types";
 
 interface ItemFormProps {
-  initialData?: Partial<{ titre: string; auteur_artiste: string; type: ItemType; categorie: string; annee: number | null; image_url: string; tags: string[]; isbn_ean: string }>;
+  initialData?: Partial<{
+    titre: string;
+    auteur_artiste: string;
+    type: ItemType;
+    categorie: string;
+    annee: number | null;
+    image_url: string;
+    tags: string[];
+    isbn_ean: string;
+    valeur_estimee: number | null;
+  }>;
   onSubmit: (data: ItemFormData) => Promise<void>;
   onCancel: () => void;
+  onCapturePhoto?: (base64: string) => Promise<string>;
 }
 
 export interface ItemFormData {
@@ -21,12 +33,13 @@ export interface ItemFormData {
   annee: string;
   image_url: string;
   localisation: string;
+  valeur_estimee: string;
 }
 
 const types: ItemType[] = ["Livre", "CD", "Vinyle"];
 const etats: ItemEtat[] = ["Neuf", "Très bon", "Bon", "Acceptable", "Mauvais"];
 
-export function ItemForm({ initialData, onSubmit, onCancel }: ItemFormProps) {
+export function ItemForm({ initialData, onSubmit, onCancel, onCapturePhoto }: ItemFormProps) {
   const [form, setForm] = useState<ItemFormData>({
     titre: initialData?.titre || "",
     auteur_artiste: initialData?.auteur_artiste || "",
@@ -38,9 +51,14 @@ export function ItemForm({ initialData, onSubmit, onCancel }: ItemFormProps) {
     annee: initialData?.annee?.toString() || "",
     image_url: initialData?.image_url || "",
     localisation: "",
+    valeur_estimee: initialData?.valeur_estimee?.toString() || "",
   });
   const [tagInput, setTagInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   function updateField(field: keyof ItemFormData, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -58,6 +76,49 @@ export function ItemForm({ initialData, onSubmit, onCancel }: ItemFormProps) {
     setForm((prev) => ({ ...prev, tags: prev.tags.filter((t) => t !== tag) }));
   }
 
+  async function startCapture() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+      });
+      streamRef.current = stream;
+      setCapturing(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      }, 100);
+    } catch { /* Camera not available */ }
+  }
+
+  async function takePhoto() {
+    if (!videoRef.current || !canvasRef.current || !onCapturePhoto) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    const base64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    setCapturing(false);
+
+    setLoading(true);
+    try {
+      const url = await onCapturePhoto(base64);
+      updateField("image_url", url);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }
+
+  function cancelCapture() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    setCapturing(false);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -70,9 +131,29 @@ export function ItemForm({ initialData, onSubmit, onCancel }: ItemFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {form.image_url && (
+      {form.image_url ? (
         <div className="relative w-32 h-40 mx-auto rounded-lg overflow-hidden">
           <Image src={form.image_url} alt="Couverture" fill className="object-cover" />
+        </div>
+      ) : capturing ? (
+        <div>
+          <video ref={videoRef} className="w-full rounded-lg" autoPlay playsInline muted />
+          <div className="flex gap-2 mt-2 justify-center">
+            <button type="button" onClick={takePhoto} className="btn-primary text-sm">Capturer</button>
+            <button type="button" onClick={cancelCapture} className="btn-secondary text-sm">Annuler</button>
+          </div>
+          <canvas ref={canvasRef} className="hidden" />
+        </div>
+      ) : onCapturePhoto ? (
+        <button type="button" onClick={startCapture} className="btn-secondary w-full flex items-center justify-center gap-2">
+          <Camera size={16} />
+          Ajouter une photo
+        </button>
+      ) : null}
+
+      {form.valeur_estimee && (
+        <div className="text-center text-sm text-accent-muted">
+          Estimation IA : ~{parseFloat(form.valeur_estimee).toFixed(2)}€
         </div>
       )}
 

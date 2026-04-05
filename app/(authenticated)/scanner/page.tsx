@@ -12,21 +12,6 @@ export default function ScannerPage() {
   const [lookupData, setLookupData] = useState<Record<string, unknown> | undefined>(undefined);
   const [statusMessage, setStatusMessage] = useState("");
 
-  async function uploadPhoto(base64: string): Promise<string | null> {
-    try {
-      const res = await fetch("/api/scan/vision", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64, uploadOnly: true }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        return data.image_url || null;
-      }
-    } catch { /* ignore */ }
-    return null;
-  }
-
   async function enrichMetadata(metadata: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const res = await fetch("/api/scan/enrich", {
@@ -45,13 +30,14 @@ export default function ScannerPage() {
           ...metadata,
           categorie: enriched.categorie || metadata.categorie,
           tags: enriched.tags || [],
+          valeur_estimee: enriched.valeur_estimee,
         };
       }
     } catch { /* ignore */ }
     return metadata;
   }
 
-  async function handleBarcodeDetected(barcode: string, photo: string | null) {
+  async function handleBarcodeDetected(barcode: string) {
     setStep("loading");
     setStatusMessage(`Code-barre détecté : ${barcode}. Recherche...`);
 
@@ -64,33 +50,16 @@ export default function ScannerPage() {
 
       if (res.ok) {
         let data = await res.json();
+        data = { ...data, isbn_ean: barcode };
 
-        // Upload the photo taken during barcode scan
-        setStatusMessage("Upload de la photo...");
-        let imageUrl = data.image_url;
-        if (photo) {
-          const uploadedUrl = await uploadPhoto(photo);
-          if (uploadedUrl) {
-            imageUrl = uploadedUrl;
-          }
-        }
-        data = { ...data, image_url: imageUrl, isbn_ean: barcode };
-
-        // Enrich with AI (categorie + tags)
-        setStatusMessage("Enrichissement IA (catégorie, tags)...");
+        setStatusMessage("Enrichissement IA (catégorie, tags, estimation)...");
         data = await enrichMetadata(data);
 
         setLookupData(data);
         setStep("form");
       } else {
-        // Lookup failed — try photo + AI if we have a photo
-        if (photo) {
-          setStatusMessage("Code-barre non trouvé. Analyse par IA...");
-          await handlePhotoCapture(photo);
-        } else {
-          setStep("scan");
-          toast.error("Code-barre non trouvé. Essaie de prendre une photo.");
-        }
+        setStep("scan");
+        toast.error("Code-barre non trouvé. Essaie de prendre une photo.");
       }
     } catch {
       setStep("scan");
@@ -112,8 +81,7 @@ export default function ScannerPage() {
       const data = await res.json();
 
       if (res.ok) {
-        // Enrich with tags
-        setStatusMessage("Enrichissement IA (tags)...");
+        setStatusMessage("Enrichissement IA (tags, estimation)...");
         const enriched = await enrichMetadata(data);
         setLookupData(enriched);
         setStep("form");
@@ -128,31 +96,27 @@ export default function ScannerPage() {
     }
   }
 
-  async function handleSubmit(formData: ItemFormData) {
-    let imageUrl = formData.image_url;
-
-    // Re-upload external image to Supabase if needed
-    if (imageUrl && !imageUrl.includes("supabase")) {
-      try {
-        const imgRes = await fetch("/api/scan/upload-external", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: imageUrl }),
-        });
-        if (imgRes.ok) {
-          const { image_url } = await imgRes.json();
-          imageUrl = image_url;
-        }
-      } catch { /* keep original URL */ }
+  async function handleCaptureForForm(base64: string): Promise<string> {
+    const res = await fetch("/api/scan/vision", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: base64, uploadOnly: true }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.image_url;
     }
+    throw new Error("Upload échoué");
+  }
 
+  async function handleSubmit(formData: ItemFormData) {
     const res = await fetch("/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...formData,
-        image_url: imageUrl,
         annee: formData.annee ? parseInt(formData.annee, 10) : null,
+        valeur_estimee: formData.valeur_estimee ? parseFloat(formData.valeur_estimee) : null,
       }),
     });
 
@@ -186,6 +150,7 @@ export default function ScannerPage() {
           initialData={lookupData}
           onSubmit={handleSubmit}
           onCancel={() => { setLookupData(undefined); setStep("scan"); }}
+          onCapturePhoto={handleCaptureForForm}
         />
       )}
     </div>
