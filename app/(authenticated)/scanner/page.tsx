@@ -12,7 +12,46 @@ export default function ScannerPage() {
   const [lookupData, setLookupData] = useState<Record<string, unknown> | undefined>(undefined);
   const [statusMessage, setStatusMessage] = useState("");
 
-  async function handleBarcodeDetected(barcode: string) {
+  async function uploadPhoto(base64: string): Promise<string | null> {
+    try {
+      const res = await fetch("/api/scan/vision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64, uploadOnly: true }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.image_url || null;
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  async function enrichMetadata(metadata: Record<string, unknown>): Promise<Record<string, unknown>> {
+    try {
+      const res = await fetch("/api/scan/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titre: metadata.titre,
+          auteur_artiste: metadata.auteur_artiste,
+          type: metadata.type || "Livre",
+          categorie: metadata.categorie,
+        }),
+      });
+      if (res.ok) {
+        const enriched = await res.json();
+        return {
+          ...metadata,
+          categorie: enriched.categorie || metadata.categorie,
+          tags: enriched.tags || [],
+        };
+      }
+    } catch { /* ignore */ }
+    return metadata;
+  }
+
+  async function handleBarcodeDetected(barcode: string, photo: string | null) {
     setStep("loading");
     setStatusMessage(`Code-barre détecté : ${barcode}. Recherche...`);
 
@@ -24,12 +63,34 @@ export default function ScannerPage() {
       });
 
       if (res.ok) {
-        const data = await res.json();
+        let data = await res.json();
+
+        // Upload the photo taken during barcode scan
+        setStatusMessage("Upload de la photo...");
+        let imageUrl = data.image_url;
+        if (photo) {
+          const uploadedUrl = await uploadPhoto(photo);
+          if (uploadedUrl) {
+            imageUrl = uploadedUrl;
+          }
+        }
+        data = { ...data, image_url: imageUrl, isbn_ean: barcode };
+
+        // Enrich with AI (categorie + tags)
+        setStatusMessage("Enrichissement IA (catégorie, tags)...");
+        data = await enrichMetadata(data);
+
         setLookupData(data);
         setStep("form");
       } else {
-        setStep("scan");
-        toast.error("Code-barre non trouvé dans les bases de données");
+        // Lookup failed — try photo + AI if we have a photo
+        if (photo) {
+          setStatusMessage("Code-barre non trouvé. Analyse par IA...");
+          await handlePhotoCapture(photo);
+        } else {
+          setStep("scan");
+          toast.error("Code-barre non trouvé. Essaie de prendre une photo.");
+        }
       }
     } catch {
       setStep("scan");
@@ -51,7 +112,10 @@ export default function ScannerPage() {
       const data = await res.json();
 
       if (res.ok) {
-        setLookupData(data);
+        // Enrich with tags
+        setStatusMessage("Enrichissement IA (tags)...");
+        const enriched = await enrichMetadata(data);
+        setLookupData(enriched);
         setStep("form");
       } else {
         setLookupData({ image_url: data.image_url });

@@ -5,7 +5,7 @@ import { Camera, ImagePlus } from "lucide-react";
 import { useRef, useEffect } from "react";
 
 interface ScannerViewProps {
-  onBarcodeDetected: (barcode: string) => void;
+  onBarcodeDetected: (barcode: string, photo: string | null) => void;
   onPhotoCapture: (base64: string) => void;
 }
 
@@ -15,7 +15,20 @@ export function ScannerView({ onBarcodeDetected, onPhotoCapture }: ScannerViewPr
 
   useEffect(() => {
     if (barcode) {
-      onBarcodeDetected(barcode);
+      // Capture photo at the moment barcode is detected
+      let photo: string | null = null;
+      if (videoRef.current && canvasRef.current) {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(video, 0, 0);
+          photo = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+        }
+      }
+      onBarcodeDetected(barcode, photo);
       reset();
     }
   }, [barcode, onBarcodeDetected, reset]);

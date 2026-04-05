@@ -5,7 +5,7 @@ import Image from "next/image";
 import { ItemType, ItemEtat } from "@/types";
 
 interface ItemFormProps {
-  initialData?: Partial<{ titre: string; auteur_artiste: string; type: ItemType; categorie: string; annee: number | null; image_url: string }>;
+  initialData?: Partial<{ titre: string; auteur_artiste: string; type: ItemType; categorie: string; annee: number | null; image_url: string; tags: string[]; isbn_ean: string }>;
   onSubmit: (data: ItemFormData) => Promise<void>;
   onCancel: () => void;
 }
@@ -33,8 +33,8 @@ export function ItemForm({ initialData, onSubmit, onCancel }: ItemFormProps) {
     type: initialData?.type || "Livre",
     categorie: initialData?.categorie || "",
     etat: "Bon",
-    isbn_ean: "",
-    tags: [],
+    isbn_ean: initialData?.isbn_ean || "",
+    tags: initialData?.tags || [],
     annee: initialData?.annee?.toString() || "",
     image_url: initialData?.image_url || "",
     localisation: "",

@@ -3,7 +3,7 @@ import { createServerClient } from "@/lib/supabase-server";
 import { analyzeImage } from "@/lib/gemini";
 
 export async function POST(request: NextRequest) {
-  const { image } = await request.json();
+  const { image, uploadOnly } = await request.json();
 
   if (!image) {
     return NextResponse.json({ error: "Image requise" }, { status: 400 });
@@ -28,6 +28,11 @@ export async function POST(request: NextRequest) {
   }
 
   const { data: { publicUrl } } = supabase.storage.from("item-images").getPublicUrl(fileName);
+
+  // Upload only mode — just return the URL without AI analysis
+  if (uploadOnly) {
+    return NextResponse.json({ image_url: publicUrl });
+  }
 
   let result = null;
   try {
